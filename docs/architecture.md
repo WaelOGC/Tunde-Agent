@@ -2,6 +2,8 @@
 
 Technical blueprint for Tunde Agent: components, boundaries, data flow, and persistence. For capability detail see [features.md](./features.md). For how environments are run and deployed, see [infrastructure.md](./infrastructure.md). Phasing and risks sit in [roadmap.md](./roadmap.md). Long-term safety for adaptive behavior is in [self_improvement_rules.md](./self_improvement_rules.md).
 
+**Protocols and persona:** [human_approval_gate.md](./human_approval_gate.md) (sensitive actions), [data_retrieval_protocol.md](./data_retrieval_protocol.md) (PostgreSQL, RLS, encryption), [persona_and_character.md](./persona_and_character.md) (Tunde’s voice and boundaries), [captcha_handling_policy.md](./captcha_handling_policy.md), [security_and_legal_compliance.md](./security_and_legal_compliance.md) (privacy, law, Docker isolation).
+
 ---
 
 ## 1. Goals and non-goals

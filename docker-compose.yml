@@ -1,0 +1,52 @@
+# PostgreSQL 15 + FastAPI app. Aligns with docs/data_retrieval_protocol.md (primary DB)
+# and docs/security_and_legal_compliance.md (containerized stack).
+#
+# Usage: docker compose up --build
+# Database data persists in the named volume `postgres_data`.
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: tunde
+      POSTGRES_PASSWORD: tunde
+      POSTGRES_DB: tunde
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Host port defaults to 5433 so this does not collide with a local PostgreSQL on 5432.
+    # Override in .env: POSTGRES_PUBLISH_PORT=5434
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tunde -d tunde"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    environment:
+      # App connects as non-superuser so RLS policies apply (docs/data_retrieval_protocol.md).
+      DATABASE_URL: postgresql://tunde_app:tunde_app_dev@db:5432/tunde
+      # Migrations run as DB owner (superuser in dev image) before Uvicorn starts.
+      ALEMBIC_DATABASE_URL: postgresql://tunde:tunde@db:5432/tunde
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      DEFAULT_LLM_PROVIDER: ${DEFAULT_LLM_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

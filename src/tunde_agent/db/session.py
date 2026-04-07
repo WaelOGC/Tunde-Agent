@@ -55,3 +55,18 @@ def db_session(user_id: uuid.UUID) -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+def resolve_approval_from_telegram_callback(request_id: uuid.UUID, approve: bool) -> bool:
+    """
+    Apply Approve/Deny from Telegram without RLS context.
+
+    Uses ``resolve_approval_from_telegram`` (SECURITY DEFINER) so ``tunde_app`` can update
+    the row when Telegram polling has no ``app.current_user_id`` set.
+    """
+    with get_engine().begin() as conn:
+        row = conn.execute(
+            text("SELECT resolve_approval_from_telegram(CAST(:rid AS uuid), :ap)"),
+            {"rid": str(request_id), "ap": approve},
+        ).scalar_one()
+        return bool(row)

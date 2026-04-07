@@ -1,7 +1,7 @@
 """
-LLM abstraction: Google Gemini (official REST, via httpx) and DeepSeek (OpenAI-compatible REST).
+LLM abstraction: Google Gemini (official REST, via httpx) and DeepSeek (JSON chat API over httpx).
 
-No OpenAI SDK or endpoints.
+Providers supported: Gemini and DeepSeek only.
 """
 
 from __future__ import annotations
@@ -79,6 +79,59 @@ class GeminiClient(BaseLLM):
             raise LLMError("Gemini returned no text (safety filter or empty completion).")
         return text
 
+    def complete_multimodal(
+        self,
+        system_prompt: str,
+        user_text: str,
+        image_parts: list[tuple[bytes, str]],
+        *,
+        max_images: int = 6,
+    ) -> str:
+        """
+        Vision-capable completion: ``image_parts`` are ``(raw_bytes, mime_type)`` e.g. ``("image/png")``.
+        """
+        import base64
+
+        url = self._URL.format(model=self._model_name)
+        parts: list[dict] = [{"text": user_text}]
+        for raw, mime in image_parts[:max_images]:
+            if not raw or not mime:
+                continue
+            mt = mime.split(";")[0].strip().lower()
+            if mt not in ("image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"):
+                mt = "image/png"
+            b64 = base64.standard_b64encode(raw).decode("ascii")
+            parts.append({"inline_data": {"mime_type": mt, "data": b64}})
+        payload = {
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": parts}],
+        }
+        try:
+            with httpx.Client(timeout=180.0) as client:
+                r = client.post(
+                    url,
+                    params={"key": self._api_key},
+                    json=payload,
+                )
+                r.raise_for_status()
+                data = r.json()
+        except httpx.HTTPStatusError as e:
+            detail = ""
+            if e.response is not None:
+                try:
+                    detail = e.response.json().get("error", {}).get("message", e.response.text)
+                except Exception:
+                    detail = e.response.text[:500]
+            logger.warning("Gemini vision HTTP %s: %s", e.response.status_code if e.response else "?", detail)
+            raise LLMError(f"Gemini API error: {detail or e!s}") from e
+        except httpx.RequestError as e:
+            raise LLMError(f"Gemini request failed: {e!s}") from e
+
+        text = _extract_gemini_text(data)
+        if not text:
+            raise LLMError("Gemini vision returned no text (safety filter or empty completion).")
+        return text
+
 
 def _extract_gemini_text(data: dict) -> str:
     parts: list[str] = []
@@ -92,7 +145,7 @@ def _extract_gemini_text(data: dict) -> str:
 
 
 class DeepSeekClient(BaseLLM):
-    """DeepSeek via OpenAI-compatible ``/v1/chat/completions`` (no OpenAI SDK)."""
+    """DeepSeek hosted chat API: ``POST {base}/v1/chat/completions`` with Bearer auth (httpx)."""
 
     def __init__(
         self,

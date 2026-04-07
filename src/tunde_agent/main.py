@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
+
+import threading
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from tunde_agent import __version__
+from tunde_agent.api.mission import router as mission_router
+from tunde_agent.api.report import router as report_router
 from tunde_agent.config.settings import TUNDE_PERSONA, get_settings
 
 logger = logging.getLogger(__name__)
@@ -17,11 +22,54 @@ logger = logging.getLogger(__name__)
 # Fail fast if required environment (e.g. DATABASE_URL) is missing
 get_settings()
 
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Startup: log routes, clear Telegram webhook, start long-polling thread for approvals."""
+    print("DEBUG: Checking Telegram Configuration...", flush=True)
+    settings = get_settings()
+    token = (settings.telegram_token or "").strip()
+    if not token:
+        print(
+            "ERROR: Telegram Token is MISSING or EMPTY. Poller will not start!",
+            flush=True,
+        )
+        logger.critical(
+            "Telegram Token is MISSING or EMPTY. Poller will not start! "
+            "Set TELEGRAM_TOKEN in .env (and ensure Docker passes it — see docker-compose env_file)."
+        )
+        poller_stop = None
+        poller_thread = None
+    else:
+        print("DEBUG: Token found. Starting Poller thread...", flush=True)
+        poller_stop = threading.Event()
+        from tunde_agent.services.telegram_poller import start_telegram_poller_thread
+
+        poller_thread = start_telegram_poller_thread(poller_stop)
+
+    paths = sorted(
+        {p for r in app.routes if (p := getattr(r, "path", None)) and isinstance(p, str)}
+    )
+    print(f"Registered routes: {paths}", flush=True)
+
+    yield
+
+    if poller_stop is not None:
+        poller_stop.set()
+        if poller_thread is not None and poller_thread.is_alive():
+            poller_thread.join(timeout=8)
+        print("Telegram polling thread stop requested.", flush=True)
+
+
 app = FastAPI(
     title="Tunde Agent",
     version=__version__,
     summary=TUNDE_PERSONA.role_summary,
+    lifespan=_lifespan,
 )
+
+app.include_router(mission_router)
+app.include_router(report_router)
 
 
 class ChatRequest(BaseModel):

@@ -15,3 +15,12 @@ htmlcov/
 # Browser screenshots (keep folder)
 downloads/*
 !downloads/.gitkeep
+
+# Runtime Telegram operator chat id (auto-written; do not commit)
+data/telegram_operator_chat_id.txt
+data/reports/*
+!data/reports/.gitkeep
+
+# Runtime search API rotation log (see logs/.gitkeep)
+logs/*
+!logs/.gitkeep

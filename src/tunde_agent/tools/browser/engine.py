@@ -65,10 +65,26 @@ class BrowserEngine:
         self._pw_cm = None
         self._stealth = None
 
-    def new_context_page(self) -> tuple[BrowserContext, Page]:
+    def new_context_page(
+        self,
+        *,
+        user_agent: str | None = None,
+        locale: str | None = None,
+        viewport: dict[str, int] | None = None,
+        extra_http_headers: dict[str, str] | None = None,
+    ) -> tuple[BrowserContext, Page]:
         if self._browser is None:
             raise RuntimeError("BrowserEngine must be used as a context manager before new_context_page().")
-        context = self._browser.new_context()
+        kwargs: dict = {}
+        if user_agent is not None:
+            kwargs["user_agent"] = user_agent
+        if locale is not None:
+            kwargs["locale"] = locale
+        if viewport is not None:
+            kwargs["viewport"] = viewport
+        if extra_http_headers is not None:
+            kwargs["extra_http_headers"] = extra_http_headers
+        context = self._browser.new_context(**kwargs)
         page = context.new_page()
         return context, page
 
@@ -130,5 +146,14 @@ class BrowserEngine:
 
         still, kind2 = self.check_for_captcha(page)
         if still:
-            NotificationService(user_id).notify_captcha_handoff(page_url, captcha_kind=kind or kind2)
+            screenshot_png: bytes | None = None
+            try:
+                screenshot_png = page.screenshot(type="png")
+            except Exception:
+                logger.exception("CAPTCHA screenshot failed for %s", page_url[:120])
+            NotificationService(user_id).notify_captcha_handoff(
+                page_url,
+                captcha_kind=kind or kind2,
+                screenshot_png=screenshot_png,
+            )
             raise CaptchaHandoffRequired(page_url, kind=kind or kind2)

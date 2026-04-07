@@ -22,9 +22,15 @@ class NotificationService:
     def __init__(self, user_id: uuid.UUID) -> None:
         self._user_id = user_id
 
-    def notify_captcha_handoff(self, url: str, *, captcha_kind: str | None = None) -> None:
+    def notify_captcha_handoff(
+        self,
+        url: str,
+        *,
+        captcha_kind: str | None = None,
+        screenshot_png: bytes | None = None,
+    ) -> None:
         """
-        Log to console, write AuditLog, and stage Telegram (placeholder).
+        Log to console, write AuditLog, send Telegram (screenshot + caption when configured).
 
         Uses the canonical operator-facing sentence required by product policy.
         """
@@ -35,10 +41,11 @@ class NotificationService:
             "message": line,
             "url": url,
             "kind": captcha_kind,
-            "channel": "console+audit",
+            "channel": "console+audit+telegram",
+            "telegram_photo": bool(screenshot_png),
         }
         self._persist_audit("captcha_handoff", payload)
-        self._telegram_placeholder(line, context={"url": url, "kind": captcha_kind})
+        self._telegram_captcha(line, url=url, kind=captcha_kind, screenshot_png=screenshot_png)
 
     def _persist_audit(self, action_type: str, payload: dict) -> None:
         with db_session(self._user_id) as session:
@@ -50,16 +57,25 @@ class NotificationService:
                 )
             )
 
-    def _telegram_placeholder(self, text: str, *, context: dict | None = None) -> None:
-        """Next phase: Bot API sendMessage using ``TELEGRAM_TOKEN`` and an approved chat id."""
+    def _telegram_captcha(
+        self,
+        text: str,
+        *,
+        url: str,
+        kind: str | None,
+        screenshot_png: bytes | None,
+    ) -> None:
         from tunde_agent.config.settings import get_settings
+        from tunde_agent.services.telegram_service import TelegramService
 
-        token = get_settings().telegram_token.strip()
-        if not token:
-            logger.debug("Telegram not configured (TELEGRAM_TOKEN empty); placeholder skip.")
+        svc = TelegramService(get_settings())
+        if not svc.token:
+            logger.debug("Telegram not configured (TELEGRAM_TOKEN empty); skip.")
             return
-        logger.info(
-            "Telegram placeholder: would notify chat (not implemented). Preview=%r context=%s",
-            text[:120],
-            context,
-        )
+        try:
+            if screenshot_png:
+                svc.send_captcha_image(screenshot_png, url)
+            else:
+                svc.send_text(f"{text}\n\nKind: {kind or 'unknown'}")
+        except Exception:
+            logger.exception("Telegram CAPTCHA notification failed for url=%s", url[:120])

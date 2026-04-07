@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from tunde_agent.models.base import Base
 
 if TYPE_CHECKING:
+    from tunde_agent.models.approval_request import ApprovalRequest
     from tunde_agent.models.audit_log import AuditLog
     from tunde_agent.models.encrypted_data import EncryptedData
     from tunde_agent.models.user_session import AuthSession
@@ -46,6 +47,11 @@ class User(Base):
     )
     encrypted_entries: Mapped[list[EncryptedData]] = relationship(
         "EncryptedData",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    approval_requests: Mapped[list[ApprovalRequest]] = relationship(
+        "ApprovalRequest",
         back_populates="user",
         cascade="all, delete-orphan",
     )

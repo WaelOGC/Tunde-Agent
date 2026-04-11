@@ -22,11 +22,13 @@ def ensure_principal_user(user_id: uuid.UUID) -> None:
     """
     email = f"p-{user_id.hex}@bootstrap.tunde.local"
     uid = str(user_id)
-    with get_engine().begin() as conn:
-        conn.execute(
-            text("SELECT set_config('app.current_user_id', CAST(:uid AS text), true)"),
-            {"uid": uid},
-        )
+    engine = get_engine()
+    with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            conn.execute(
+                text("SELECT set_config('app.current_user_id', CAST(:uid AS text), true)"),
+                {"uid": uid},
+            )
         conn.execute(
             text(
                 """

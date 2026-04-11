@@ -15,6 +15,8 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tunde_agent.config.database_url import normalize_database_url
+
 
 def project_root() -> Path:
     """Repository root (directory containing ``src/`` and ``docs/``)."""
@@ -79,12 +81,17 @@ class Settings(BaseSettings):
     """Environment-driven settings. Secrets must not be committed (see .env.example)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Resolve from repo root so ``python main.py`` works regardless of CWD (e.g. under ``src/``).
+        env_file=str(project_root() / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    database_url: str
+    database_url: str = Field(
+        ...,
+        validation_alias="DATABASE_URL",
+        description="SQLAlchemy URL from the environment only; never hardcode credentials in code.",
+    )
     telegram_token: str = Field(default="", validation_alias="TELEGRAM_TOKEN")
     telegram_chat_id: str = Field(default="", validation_alias="MY_TELEGRAM_CHAT_ID")
     encryption_key: str = ""
@@ -204,6 +211,14 @@ class Settings(BaseSettings):
         if v is None:
             return ""
         return str(v).strip()
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_db_url(cls, v: object) -> str:
+        if v is None:
+            msg = "DATABASE_URL is required (set in the process environment or project .env)."
+            raise ValueError(msg)
+        return normalize_database_url(str(v))
 
 
 @lru_cache

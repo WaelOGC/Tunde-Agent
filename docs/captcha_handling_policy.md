@@ -4,6 +4,8 @@ How **Tunde** interacts with **CAPTCHA** and similar bot challenges during **bro
 
 Related: [human_approval_gate.md](./human_approval_gate.md) for pausing sensitive actions; [security_and_legal_compliance.md](./security_and_legal_compliance.md) for legal and scraping boundaries.
 
+**Operational tie-in:** When Playwright encounters a challenge the automation stack treats as a **CAPTCHA handoff**, research code can raise **`CaptchaHandoffRequired`**; background missions log the failure rather than looping silently. Operator messaging for blocked search/SERP states is described in [current_implementation.md](./current_implementation.md) (mission flow).
+
 ---
 
 ## 1. Principles

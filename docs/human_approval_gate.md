@@ -35,6 +35,8 @@ Notifications must reach a channel the **real operator** controls:
 | **Web UI** | Primary surface: in-app banner, modal, or dedicated “Approvals” queue with full context and Proceed or Abort controls bound to the user session. |
 | **Telegram** (or similar) | Secondary or mobile channel for urgent approvals, using a **verified bot** and **operator-bound chat** so approvals cannot be intercepted by unrelated parties. |
 
+**Implemented path (repository):** Research missions use **`MY_TELEGRAM_CHAT_ID`** (operator chat from settings, not the DB `user_id`) for **screenshot + caption + inline ✅/❌**. A row in **`approval_requests`** is created first; a **long-polling** Telegram thread applies callbacks by calling the PostgreSQL function **`resolve_approval_from_telegram(request_id, approve)`** (migration `002`, `SECURITY DEFINER`), while the mission worker **polls the row status** until approved, denied, or timeout (default on the order of **ten minutes** in mission code). If **`TELEGRAM_TOKEN`** is missing, the poller does not start and approvals cannot complete over Telegram. Details: [current_implementation.md](./current_implementation.md).
+
 **Requirements**
 
 - **Authentication** — Proceed and Abort are accepted only from identities bound to the same principal as the session that initiated the action (or a pre-registered admin principal, if product policy allows).

@@ -76,3 +76,20 @@ The following are **out of scope** for the initial web MVP and are tracked in [r
 ## 6. Relationship to infrastructure
 
 Feature behavior assumes **localhost development** and **production on a VPS** as described in [infrastructure.md](./infrastructure.md): the API and Browser Automation layer must reach email providers and the public web under the same policy constraints in every environment.
+
+---
+
+## 7. Implemented in the repository (snapshot)
+
+The sections above state **product intent** (email read/draft/organize, SPA, broad research outputs). The following capabilities are **wired in code today**; for routes, env vars, and tables see [current_implementation.md](./current_implementation.md). For **`TUNDE_RESEARCH_OUTPUT_LANG`** and **`TUNDE_RESEARCH_SEARCH_LOCALES`** (report language vs search regions), see [research_language_and_search_locales.md](./research_language_and_search_locales.md).
+
+- **LLM chat** — `POST /chat` with **Gemini** or **DeepSeek** (`DEFAULT_LLM_PROVIDER`); minimal **audit** metadata (no full prompt storage on that path).
+- **Bounded browsing** — `GET /test-browse` and Playwright-backed research fetches with **CAPTCHA policy** alignment ([captcha_handling_policy.md](./captcha_handling_policy.md)).
+- **Research missions** — `POST /mission/start` (async **202**): URL discovery (optional **HTTP SERP** chain: Google CSE → Serper → Riley, then browser fallbacks), **Telegram** screenshot + **human approval** (`approval_requests` + inline keyboard), then **multi-agent orchestration** (extraction, analyst, verifier, master quality gate, optional vision/designer paths), **HTML report** on disk, **public report URL** via `/reports/view/{id}`.
+- **Telegram operator UX** — Long-polling bot: **`/research`**, **`/analyze`**, **`/mission`**, natural “research on …” / “analysis of …” phrasing, regex-triggered **complex** missions (e.g. market / feasibility wording), conversational chat with short history, **native Gemini image generation** when prompts match configured patterns, **`/help`**, **`/done`**, **`/cancel_email`**.
+- **Post-report actions** — From Telegram: **PDF**, **Word (DOCX)**, **CSV**, alternate **HTML**, optional **SMTP** send, **Q&A on the report**, **compare** with a prior report, **summarize**.
+- **Persistence** — PostgreSQL with **RLS** for `audit_logs`, `approval_requests`, `encrypted_data`, etc.; optional **field-level encryption** when `ENCRYPTION_KEY` is set.
+
+**Email:** Full **IMAP read / thread UI / provider rules** described in §1 are **not** implemented as an integrated mail client in this tree. **Outbound SMTP** exists for the **report delivery** path (post-mission “send to email”), not for general mailbox automation.
+
+**Frontend SPA:** Not present in the repository; architecture §3 notes the gap explicitly.

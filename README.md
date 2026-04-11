@@ -1,6 +1,6 @@
 # Tunde Agent
 
-Personal AI agent stack: **Python**, **FastAPI**, **Playwright**, **PostgreSQL**. Documentation lives in [`docs/`](docs/).
+Personal AI agent stack: **Python**, **FastAPI**, **Playwright**, **PostgreSQL**. Documentation lives in [`docs/`](docs/). Research missions: report language and search locales (`TUNDE_RESEARCH_*` in `.env`) are explained in [`docs/research_language_and_search_locales.md`](docs/research_language_and_search_locales.md).
 
 ## Quick start (Docker)
 

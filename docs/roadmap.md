@@ -1,6 +1,6 @@
 # Roadmap
 
-Phased delivery for Tunde Agent from a **personal web MVP** toward **desktop integration** and eventually **public scalability and hardening**. Architecture is in [architecture.md](./architecture.md); features in [features.md](./features.md); runbooks and hosting in [infrastructure.md](./infrastructure.md); safety and change limits in [self_improvement_rules.md](./self_improvement_rules.md).
+Phased delivery for Tunde Agent from a **personal web MVP** toward **desktop integration** and eventually **public scalability and hardening**. Architecture is in [architecture.md](./architecture.md); features in [features.md](./features.md); runbooks and hosting in [infrastructure.md](./infrastructure.md); safety and change limits in [self_improvement_rules.md](./self_improvement_rules.md). **What is already built in git** is summarized in [current_implementation.md](./current_implementation.md).
 
 ---
 
@@ -23,7 +23,7 @@ Each phase **builds on** the previous one; skipping Phase 2 is possible for a pu
 
 | Phase | Focus | Outcomes (milestones) | Dependencies |
 | ----- | ----- | --------------------- | ------------ |
-| **Phase 1 — Web App MVP (current)** | Core web app, FastAPI backend, basic agent loop, Playwright for bounded tasks, first vertical slices for email and research | Deliverables aligned with MVP scope in [features.md](./features.md): chat or task UI, authenticated API, Browser Automation layer with policy gates, email read or draft flows with send approval, research artifacts with attribution | Stable component boundaries in [architecture.md](./architecture.md); localhost and VPS paths in [infrastructure.md](./infrastructure.md) |
+| **Phase 1 — Web App MVP (current)** | Core **FastAPI** backend, **Telegram**-mediated human gates, **Playwright** research/browse, **PostgreSQL** + RLS, first **research mission** slice (async API + multi-agent report + exports) | **In repo:** `POST /chat`, `POST /mission/start`, `/reports/view/...`, health/RLS smoke, audit + approval tables, optional SERP APIs and SMTP for reports. **Still roadmap-aligned:** React SPA task UI, authenticated web sessions at scale, full IMAP mail client flows from [features.md](./features.md) | Stable boundaries in [architecture.md](./architecture.md); Compose and ports in [infrastructure.md](./infrastructure.md) §10; factual snapshot in [current_implementation.md](./current_implementation.md) |
 | **Phase 2 — Desktop and laptop integration** | OS-level or local companion capabilities, secure bridge between web agent and the user’s machine | Approved local helper or automation channel; stricter **local auth** and pairing; clear trust model for what the remote API may request from the device | Phase 1 stable; operator trust in [self_improvement_rules.md](./self_improvement_rules.md) enforcement |
 | **Phase 3 — Public scalability and security** | Multi-user isolation, rate limits, audit and compliance-oriented controls, scale-out options | **Tenant** or account isolation, abuse prevention, centralized observability, optional **multi-VPS** or **orchestrated** deployment—described as options, not a single mandated stack | Lessons from Phases 1–2; formal governance for prompts, tools, and infrastructure changes |
 
@@ -31,10 +31,10 @@ Each phase **builds on** the previous one; skipping Phase 2 is possible for a pu
 
 ## Phase 1 detail (Web App MVP)
 
-- **Web application** — SPA plus API as the sole product surface; no requirement for public registration.
-- **Agent loop** — Plan, tool calls, synthesis, with human gates where [features.md](./features.md) requires them.
+- **Web application** — Target: **SPA plus API** as the primary product surface; no requirement for public registration. **Current tree:** API + **Telegram** already provide an operator-facing slice (missions, approvals, report links); SPA remains to be added alongside or after this slice.
+- **Agent loop** — Plan, tool calls, synthesis, with human gates where [features.md](./features.md) requires them. Research missions implement an orchestrated loop post-approval ([current_implementation.md](./current_implementation.md)).
 - **Browser Automation layer** — Playwright-backed, session-scoped contexts; domain allowlists and confirmation for sensitive steps.
-- **Stubs versus slices** — Early milestones may stub some integrations, but **one end-to-end slice** (for example research or email) should be production-credible before declaring Phase 1 complete.
+- **Stubs versus slices** — Early milestones may stub some integrations, but **one end-to-end slice** (for example research or email) should be production-credible before declaring Phase 1 complete. **Research** has a credible vertical slice in code today; **full email** remains ahead of the current integration surface.
 
 ---
 

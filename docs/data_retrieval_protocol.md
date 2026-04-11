@@ -84,3 +84,11 @@ flowchart TB
 ```
 
 This protocol keeps Tunde’s memory **fast, bounded, and defensible** under scrutiny—technically and legally.
+
+---
+
+## 7. Schema present in migrations (today)
+
+Alembic revision **`001_rls`** creates the **`tunde_app`** login role (dev password in migration for local use), tables **`users`**, **`sessions`**, **`audit_logs`**, **`encrypted_data`**, enables **RLS** on applicable tables, seeds a **smoke-test user** UUID used by development helpers, and grants least-privilege DML to **`tunde_app`**. Revision **`002_approval`** adds **`approval_requests`** (JSONB payload, status constrained to `pending` / `approved` / `denied`), RLS on that table, and **`resolve_approval_from_telegram`**.
+
+Session context for RLS is set in application code per request/transaction (see `db/session.py` usage). End-to-end HTTP and Telegram flows: [current_implementation.md](./current_implementation.md).

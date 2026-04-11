@@ -141,3 +141,16 @@ Promotion from **branch to production** should remain a **conscious operator act
 - [architecture.md](./architecture.md) — Trust boundaries and Browser Automation isolation.
 - [features.md](./features.md) — What must work in each environment.
 - [roadmap.md](./roadmap.md) — When multi-node or stronger isolation may appear.
+
+---
+
+## 10. Docker Compose in this repository
+
+The root **`docker-compose.yml`** is the concrete dev stack (not only conceptual):
+
+- **`db`** — `postgres:15`, credentials and database name **`tunde`**, healthcheck `pg_isready`, host port **`${POSTGRES_PUBLISH_PORT:-5433}:5432`** so local Postgres on 5432 can coexist.
+- **`app`** — Build context **`.`**, **`docker/Dockerfile`**: installs the package, **`playwright install --with-deps chromium`**, copies **`docs/`** into the image, **`EXPOSE 8000`**, entrypoint runs **`alembic upgrade head`** then **`uvicorn tunde_agent.main:app --host 0.0.0.0 --port 8000`**.
+- **Secrets and LLM keys** — Passed via **`env_file: .env`**; Compose also forwards selected variables into the container environment. **`DATABASE_URL`** must use the **`tunde_app`** role (RLS); **`ALEMBIC_DATABASE_URL`** uses the DB owner for migrations.
+- **Durability** — **`./data:/app/data`** bind mount for generated **HTML reports**, Telegram session/operator persistence files, and related artifacts.
+
+Exact HTTP paths, health checks, and Telegram behavior are listed in [current_implementation.md](./current_implementation.md).

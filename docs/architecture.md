@@ -2,7 +2,9 @@
 
 Technical blueprint for Tunde Agent: components, boundaries, data flow, and persistence. For capability detail see [features.md](./features.md). For how environments are run and deployed, see [infrastructure.md](./infrastructure.md). Phasing and risks sit in [roadmap.md](./roadmap.md). Long-term safety for adaptive behavior is in [self_improvement_rules.md](./self_improvement_rules.md).
 
-**Protocols and persona:** [human_approval_gate.md](./human_approval_gate.md) (sensitive actions), [data_retrieval_protocol.md](./data_retrieval_protocol.md) (PostgreSQL, RLS, encryption), [persona_and_character.md](./persona_and_character.md) (Tunde’s voice and boundaries), [captcha_handling_policy.md](./captcha_handling_policy.md), [security_and_legal_compliance.md](./security_and_legal_compliance.md) (privacy, law, Docker isolation).
+**Protocols and persona:** [human_approval_gate.md](./human_approval_gate.md) (sensitive actions), [data_retrieval_protocol.md](./data_retrieval_protocol.md) (PostgreSQL, RLS, encryption), [persona_and_character.md](./persona_and_character.md) (Tunde’s voice and boundaries), [captcha_handling_policy.md](./captcha_handling_policy.md), [security_and_legal_compliance.md](./security_and_legal_compliance.md) (privacy, law, Docker isolation). **Research missions — report language vs search locales:** [research_language_and_search_locales.md](./research_language_and_search_locales.md).
+
+**What matches the repo today:** [current_implementation.md](./current_implementation.md) (HTTP routes, Telegram missions and approvals, migrations, Docker, search API rotation). Use it when this document describes product surfaces not yet present in the tree (for example the SPA below).
 
 ---
 
@@ -69,6 +71,8 @@ flowchart LR
 ---
 
 ## 3. Frontend (React, pure JS/CSS)
+
+**Repository note:** Phase 1 product vision includes a **React SPA** for chat, tasks, and an in-browser approvals queue. In the **current codebase**, operator-facing flows are delivered primarily through the **FastAPI HTTP API** plus **Telegram** (missions, screenshots, inline approve/deny, post-report actions); see [current_implementation.md](./current_implementation.md). The SPA description below remains the intended boundary once the frontend lands in-repo.
 
 The **single-page application** owns chat and task UI, lightweight client state (current thread, pending approvals), and transport to the backend. Implementation may use **REST with polling**, **Server-Sent Events**, or **WebSockets** for partial updates; the architecture treats that as an implementation choice, not a fixed contract here.
 
@@ -187,3 +191,9 @@ sequenceDiagram
 ```
 
 This flow is the architectural backbone; feature-level acceptance detail remains in [features.md](./features.md).
+
+---
+
+## 12. Repository snapshot
+
+For **concrete** modules (`api/`, `services/research_orchestration/`, `tools/browser/`, Alembic revisions, environment variables, and Compose wiring), see [current_implementation.md](./current_implementation.md). It is maintained as the factual counterpart to the diagrams and forward-looking sections above.

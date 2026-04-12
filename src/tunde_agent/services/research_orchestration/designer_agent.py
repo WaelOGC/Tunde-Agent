@@ -1,7 +1,8 @@
 """
 Designer Agent: QuickChart.io charts with data-driven type selection (Chart.js config).
 
-Chooses among bar, grouped bar, line/area, radar, and doughnut based on analyst hints and data shape.
+Picks among bar, horizontal bar, grouped bar, line, area, radar, polarArea, doughnut, scatter, etc.,
+from analyst ``chart_kind`` hints and data shape (not everything defaults to pie/doughnut).
 """
 
 from __future__ import annotations
@@ -29,6 +30,36 @@ _TIME_HINT = re.compile(
     re.I,
 )
 _DATEISH = re.compile(r"\d{4}[-/]\d{1,2}")
+
+_SUPPORTED_CHART_KINDS = frozenset(
+    {
+        "bar",
+        "grouped_bar",
+        "line",
+        "area",
+        "radar",
+        "doughnut",
+        "horizontal_bar",
+        "polarArea",
+        "scatter",
+    }
+)
+
+
+def _quickchart_dimensions(kind: str) -> tuple[int, int]:
+    """PNG pixel size — smaller for radial charts so they fit report layout."""
+    k = (kind or "bar").lower()
+    if k == "doughnut":
+        return 400, 300
+    if k == "polararea":
+        return 400, 300
+    if k in ("horizontal_bar", "radar"):
+        return 520, 340
+    if k == "scatter":
+        return 540, 360
+    if k in ("line", "area"):
+        return 580, 340
+    return 600, 340
 
 
 def _topic_theme_hue(topic: str) -> int:
@@ -102,14 +133,31 @@ def _normalize_kind(raw: str | None) -> str | None:
         "multi": "grouped_bar",
         "radar": "radar",
         "spider": "radar",
+        "horizontal": "horizontal_bar",
+        "horizontal_bar": "horizontal_bar",
+        "hbar": "horizontal_bar",
+        "bar_horizontal": "horizontal_bar",
+        "column": "bar",
+        "polar": "polarArea",
+        "polar_area": "polarArea",
+        "polararea": "polarArea",
+        "scatter": "scatter",
+        "xy": "scatter",
+        "bubble": "scatter",
+        "heatmap": "bar",
+        "heat_map": "bar",
+        "treemap": "bar",
+        "matrix": "bar",
+        "waterfall": "line",
+        "step": "line",
+        "spline": "line",
         "default": None,
         "auto": None,
     }
     if k in aliases:
-        v = aliases[k]
-        return v
-    if k in ("bar", "grouped_bar", "line", "area", "radar", "doughnut"):
-        return k
+        return aliases[k]
+    if k in ("bar", "grouped_bar", "line", "area", "radar", "doughnut", "horizontal_bar", "polararea", "polarArea", "scatter"):
+        return "polarArea" if k == "polararea" else k
     return None
 
 
@@ -119,7 +167,10 @@ def _infer_chart_kind(
     secondary: list[float] | None,
     analyst_hint: str | None,
 ) -> str:
+    hint_raw = str(analyst_hint or "").strip()
     hinted = _normalize_kind(analyst_hint)
+    hint_l = hint_raw.lower()
+
     if secondary and len(secondary) == len(values):
         return "grouped_bar"
     if hinted == "grouped_bar" and secondary and len(secondary) == len(values):
@@ -127,16 +178,48 @@ def _infer_chart_kind(
     if hinted and hinted != "grouped_bar":
         if hinted == "doughnut" and not _looks_like_share_slice(values):
             pass
-        else:
+        elif hinted in _SUPPORTED_CHART_KINDS:
             return hinted
+
     if secondary and len(secondary) == len(values):
         return "grouped_bar"
-    if _looks_like_share_slice(values):
+
+    comp_words = ("pie", "donut", "doughnut", "ring", "slice", "composition", "share of whole")
+    wants_circle = any(w in hint_l for w in comp_words) or hinted == "doughnut"
+    if _looks_like_share_slice(values) and wants_circle and len(values) <= 8:
         return "doughnut"
+
+    if _looks_like_share_slice(values):
+        if len(values) <= 4:
+            return "polarArea"
+        return "horizontal_bar"
+
     if _looks_like_time_series(labels):
+        if "line" in hint_l and "area" not in hint_l:
+            return "line"
         return "area"
+
+    if any(k in hint_l for k in ("scatter", "correlation", "xy plot", "x-y")):
+        return "scatter"
+
+    n = len(values)
+    if n >= 5 and not _looks_like_time_series(labels):
+        lo, hi = min(values), max(values)
+        spread = (hi - lo) / (abs(hi) + 1e-9) if hi else 0.0
+        if spread > 0.4:
+            return "scatter"
+
     if 4 <= len(labels) <= 10 and not secondary:
+        avg = sum(len(str(x)) for x in labels) / len(labels)
+        if avg > 12:
+            return "horizontal_bar"
         return "radar"
+
+    if len(labels) > 10:
+        return "horizontal_bar"
+
+    if len(values) == 1:
+        return "bar"
     return "bar"
 
 
@@ -220,8 +303,11 @@ def _chart_js_config(spec: dict[str, Any], theme_topic: str) -> dict[str, Any]:
 
     base_options: dict[str, Any] = {
         "plugins": {
-            "title": {"display": True, "text": title[:80], "font": {"size": 16, "weight": "600"}},
-            "legend": {"display": kind in ("grouped_bar", "line", "area", "doughnut")},
+            "title": {"display": True, "text": title[:80], "font": {"size": 13, "weight": "600"}},
+            "legend": {
+                "display": kind
+                in ("grouped_bar", "line", "area", "doughnut", "polarArea", "scatter", "horizontal_bar")
+            },
         },
         "responsive": True,
         "maintainAspectRatio": True,
@@ -248,7 +334,37 @@ def _chart_js_config(spec: dict[str, Any], theme_topic: str) -> dict[str, Any]:
                     **base_options["plugins"],
                     "legend": {"display": True, "position": "bottom"},
                 },
-                "cutout": "58%",
+                "cutout": "66%",
+            },
+        }
+
+    if kind == "polarArea":
+        return {
+            "type": "polarArea",
+            "data": {
+                "labels": labels,
+                "datasets": [
+                    {
+                        "data": values,
+                        "backgroundColor": [_hsla_fade_fill(c, "0.55") for c in colors],
+                        "borderColor": borders,
+                        "borderWidth": 1,
+                    }
+                ],
+            },
+            "options": {
+                **base_options,
+                "plugins": {
+                    **base_options["plugins"],
+                    "legend": {"display": True, "position": "right"},
+                },
+                "scales": {
+                    "r": {
+                        "beginAtZero": True,
+                        "grid": {"color": "rgba(0,0,0,0.06)"},
+                        "angleLines": {"color": "rgba(0,0,0,0.08)"},
+                    }
+                },
             },
         }
 
@@ -309,6 +425,68 @@ def _chart_js_config(spec: dict[str, Any], theme_topic: str) -> dict[str, Any]:
                 "scales": {
                     "x": {"grid": {"display": False}, "ticks": {"maxRotation": 45, "minRotation": 0}},
                     "y": {"beginAtZero": True, "grid": {"color": "rgba(0,0,0,0.06)"}},
+                },
+            },
+        }
+
+    if kind == "horizontal_bar":
+        return {
+            "type": "bar",
+            "data": {
+                "labels": labels,
+                "datasets": [
+                    {
+                        "label": title[:60],
+                        "data": values,
+                        "backgroundColor": colors,
+                        "borderColor": borders,
+                        "borderWidth": 1,
+                        "borderRadius": 4,
+                    }
+                ],
+            },
+            "options": {
+                **base_options,
+                "indexAxis": "y",
+                "plugins": {**base_options["plugins"], "legend": {"display": False}},
+                "scales": {
+                    "x": {"beginAtZero": True, "grid": {"color": "rgba(0,0,0,0.06)"}},
+                    "y": {"grid": {"display": False}, "ticks": {"maxRotation": 0}},
+                },
+            },
+        }
+
+    if kind == "scatter":
+        pts = [{"x": float(i), "y": float(v)} for i, v in enumerate(values)]
+        return {
+            "type": "scatter",
+            "data": {
+                "datasets": [
+                    {
+                        "label": title[:50],
+                        "data": pts,
+                        "backgroundColor": colors[: len(pts)] if len(colors) >= len(pts) else colors,
+                        "borderColor": borders[0],
+                        "borderWidth": 1,
+                        "pointRadius": 5,
+                    }
+                ],
+            },
+            "options": {
+                **base_options,
+                "plugins": {**base_options["plugins"], "legend": {"display": False}},
+                "scales": {
+                    "x": {
+                        "type": "linear",
+                        "title": {"display": True, "text": "Series"},
+                        "grid": {"color": "rgba(0,0,0,0.06)"},
+                    },
+                    "y": {
+                        "type": "linear",
+                        "beginAtZero": True,
+                        "title": {"display": True, "text": "Value"},
+                        "grid": {"color": "rgba(0,0,0,0.06)"},
+                    },
                 },
             },
         }
@@ -384,11 +562,12 @@ def build_quickchart_png_url(
         return None
     tt = (theme_topic or "").strip() or "research"
     chart_config = _chart_js_config(spec, tt)
+    w, h = _quickchart_dimensions(str(spec.get("chart_kind") or "bar"))
     q = urllib.parse.urlencode(
         {
             "format": "png",
-            "width": 720,
-            "height": 440,
+            "width": w,
+            "height": h,
             "c": json.dumps(chart_config, separators=(",", ":")),
         }
     )
@@ -528,3 +707,75 @@ def generate_charts_from_analyst_with_fallback(
     if intel:
         cap = f"{cap} · {intel}"[:1024]
     return [(png, cap, "")]
+
+
+def build_quickchart_png_url_from_chartjs(
+    chartjs: dict[str, Any],
+    *,
+    width: int = 560,
+    height: int = 340,
+) -> str | None:
+    """Build a QuickChart PNG URL from a Chart.js-style config dict."""
+    if not isinstance(chartjs, dict):
+        return None
+    ctype = chartjs.get("type")
+    if not isinstance(ctype, str) or not ctype.strip():
+        return None
+    data = chartjs.get("data")
+    if not isinstance(data, dict):
+        return None
+    dss = data.get("datasets")
+    if not isinstance(dss, list) or len(dss) < 1:
+        return None
+    q = urllib.parse.urlencode(
+        {
+            "format": "png",
+            "width": width,
+            "height": height,
+            "c": json.dumps(chartjs, separators=(",", ":")),
+        }
+    )
+    return f"{_QUICKCHART}?{q}"
+
+
+def generate_pngs_from_designer_llm_output(
+    designer_out: dict[str, Any],
+    *,
+    theme_topic: str | None = None,
+) -> list[tuple[bytes, str, str]]:
+    """
+    Fetch PNGs for each ``charts[].chartjs`` entry from QuickChart.
+
+    Returns the same tuple shape as ``generate_charts_from_analyst`` for Telegram / HTML embed.
+    """
+    charts = designer_out.get("charts")
+    if not isinstance(charts, list) or not charts:
+        return []
+    tt = (theme_topic or "").strip() or "research"
+    out: list[tuple[bytes, str, str]] = []
+    for i, ch in enumerate(charts):
+        if not isinstance(ch, dict):
+            continue
+        chartjs = ch.get("chartjs")
+        if not isinstance(chartjs, dict):
+            continue
+        url = build_quickchart_png_url_from_chartjs(chartjs)
+        if not url:
+            continue
+        title = str(ch.get("title") or ch.get("id") or f"chart_{i}")[:120]
+        foot = str(ch.get("source_footnote") or "").strip()[:400]
+        cap = f"{title} ({tt})"
+        if foot:
+            cap = f"{cap} · {foot}"[:1024]
+        try:
+            with httpx.Client(timeout=45.0, follow_redirects=True) as client:
+                r = client.get(url, headers={"User-Agent": _CHROME_UA})
+                r.raise_for_status()
+                data = r.content
+        except Exception as exc:
+            logger.warning("QuickChart fetch failed (designer LLM chart %s): %s", i, exc)
+            continue
+        if not data or len(data) < 100:
+            continue
+        out.append((data, cap, url))
+    return out

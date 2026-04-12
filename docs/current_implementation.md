@@ -13,7 +13,7 @@ This document describes **what exists in the codebase today**, so it stays align
 | HTTP API | **FastAPI** (`tunde_agent.main:app`), **Uvicorn** |
 | Database | **PostgreSQL** (primary); SQLAlchemy 2.x; **Alembic** migrations |
 | Browser automation | **Playwright** (+ optional stealth-oriented deps per `pyproject.toml`); Chromium installed in the Docker image |
-| LLM | **Gemini** and **DeepSeek** via **httpx** REST (no SPA-held keys) |
+| LLM | **Gemini** and **DeepSeek** via **httpx** REST; **task routing** in `tunde_agent/multi_agent/model_router.py` (`TaskKind`, `resolve_llm_client`) — JSON-heavy steps prefer DeepSeek when configured ([multi_agent.md](./multi_agent.md)) |
 | Human approvals & UX | **Telegram Bot API** (long-polling thread at startup when `TELEGRAM_TOKEN` is set) |
 | Report artifacts | Self-contained **HTML** files under `data/reports/` (path resolved at runtime; Docker bind-mount `./data:/app/data`) |
 
@@ -41,8 +41,8 @@ Routers: `api/mission.py` (prefix `/mission`), `api/report.py` (reports route at
 1. **Start** — `POST /mission/start` validates the optional URL against browse policy, ensures DB principal exists, enqueues `execute_research_mission` on a worker thread.
 2. **URL discovery** — `discover_source_urls` may use **programmatic search APIs** in fixed order (**Google Programmable Search → Serper → Riley-style POST API**), then browser/SERP fallbacks as implemented in `services/search_api/` and browser tools. Optional env: **`TUNDE_RESEARCH_OUTPUT_LANG`**, **`TUNDE_RESEARCH_SEARCH_LOCALES`**. Operator-oriented explanation: [research_language_and_search_locales.md](./research_language_and_search_locales.md).
 3. **First page + gate** — Opens the first source, captures evidence for **Telegram**; **`request_human_approval`** creates an `approval_requests` row, sends photo or text with inline buttons to **`MY_TELEGRAM_CHAT_ID`**, polls until approved/denied/timeout.
-4. **Post-approval orchestration** — `run_post_approval_pipeline`: parallel page extraction, **master plan**, **analyst**, **verifier**, **master quality gate** with bounded revisions; optional **vision** pass and **designer/chart** path when metrics allow.
-5. **Delivery** — Report HTML written to disk; Telegram message includes link built from **`TUNDE_PUBLIC_BASE_URL`** or **`REPORT_PUBLIC_BASE_URL`** (default `http://localhost:8000` if unset—set a public **HTTPS** origin for mobile Telegram). **Post-task inline actions** (PDF, DOCX, CSV, alternate HTML, email, Q&A on report, compare, summarize) are handled via callback prefixes in `telegram_post_task_handlers.py`.
+4. **Post-approval orchestration** — `run_post_approval_pipeline`: parallel page fetch; **master plan** (task overlaps fetch); **vision** on collected pages; **extractor** (structured JSON, once); revision loop: **analyst** → **designer LLM** (Chart.js + QuickChart PNG when valid) → **verifier** → **master quality gate** (bounded revisions).
+5. **Delivery** — Default report HTML (`report_html.build_landing_page_html`) written to disk; Telegram teaser via **`UIUXAgent`** / `telegram_markdown_v2` (structured HTML, optional ASCII chart from metrics). Link from **`TUNDE_PUBLIC_BASE_URL`** / **`REPORT_PUBLIC_BASE_URL`**. **Post-task** callbacks in `telegram_post_task_handlers.py` include **🎨 Landing page** (`l:`) → two-step **custom** HTML via `generation_service.py` (overwrites the same `uuid.html`). Other actions: PDF, DOCX, CSV, HTML export, email, Q&A, compare, summarize.
 6. **SMTP (optional)** — “Send to email” uses **`SMTP_*`** and **`REPORT_EMAIL_TO`** / **`TUNDE_REPORT_EMAIL_TO`** when configured (`report_email.py`).
 
 Mission audit stages are logged to **`audit_logs`** with `action_type` such as `mission_research` (JSON `details`).
@@ -53,8 +53,8 @@ Mission audit stages are logged to **`audit_logs`** with `action_type` such as `
 
 - **Startup** — If `TELEGRAM_TOKEN` is empty, the poller does not start (logged critically). Otherwise a **daemon thread** runs `telegram_poller`.
 - **Approvals** — `resolve_approval_from_telegram` (PostgreSQL **SECURITY DEFINER** function, migration `002`) updates `approval_requests` when the user taps inline buttons.
-- **Private chat** — `telegram_chat_handler`: conversational replies with short session history; commands **`/research`**, **`/analyze`**, **`/mission`**; natural phrases for “research on …”, “analysis of …”, and regex-triggered **complex missions** (e.g. market analysis); **image generation** via **`GEMINI_IMAGE_MODEL`** when the user matches “draw …” / “generate an image …” patterns; **`/help`**, **`/done`**, **`/cancel_email`**; operator chat id persistence (`data/`).
-- **Post-report** — Inline keyboard callbacks drive exports and follow-ups (see §3).
+- **Private chat** — **`/start`** opens a **pillar menu** (inline `u:` callbacks); navigation **edits the same message** (`telegram_ux_menus`, `TelegramService.edit_message_html_in_chat`). Free text still works for casual chat; legacy **`/research`** / natural triggers remain in `telegram_chat_handler`. Topic capture after a menu pick uses **`telegram_ux_pending`**. **Photo edits:** incoming **`photo`** or image **`document`** (caption or two-step text) → `getFile` download → `generate_image_from_reference_bytes` (`gemini_image_generation.py`); pending `file_id` in **`telegram_pending_photo_edit`**; **`/cancel_photo_edit`**. **Video:** `u:v:10|20|30` sets **`telegram_pending_video_generation`**; next text → **`gemini_veo_video.generate_video_mp4_for_preset`** (Veo `predictLongRunning` + poll + download); **`TelegramService.send_video_to_chat`**; **`/cancel_video`**. **`/help`** is a short pointer, not a long command list.
+- **Post-report** — Inline keyboard (`telegram_post_task_markup`) includes **📥 Export to PDF** (same handler as **📄 PDF**), landing, Word, CSV, etc. Pending **email** / **custom landing** prompts attach **Cancel** buttons (`u:ce`, `u:cl:{report_uuid}`). **`/cancel_landing`** / **`/cancel_email`** still work as hidden escapes.
 
 ---
 

@@ -82,6 +82,12 @@ def fallback_dict_for_agent(raw: str, role: str) -> dict[str, Any]:
         }
     if role == "analyst":
         return {
+            "markdown_report": snippet[:1200] if snippet else "",
+            "market_share_data": [],
+            "comparison_tables": [],
+            "key_insights": [],
+            "sources_with_links": [],
+            "chart_spec": {"intent": "other", "notes": "parse_fallback"},
             "executive_summary": snippet[:900] if snippet else "Synthesis unavailable (model returned non-JSON).",
             "insights": _bullets_from_text(snippet) or ["See summary above."],
             "open_questions": [],
@@ -114,6 +120,20 @@ def fallback_dict_for_agent(raw: str, role: str) -> dict[str, Any]:
             "insights": [],
             "sources": [],
             "technical_ids": ["Master gate returned non-JSON; delivering analyst draft."],
+            "_parse_fallback": True,
+        }
+    if role == "extractor":
+        return {
+            "extractions": [],
+            "charts_detected": [],
+            "low_confidence_flags": ["non_json_output"],
+            "notes": [snippet[:400]] if snippet else [],
+            "_parse_fallback": True,
+        }
+    if role == "designer":
+        return {
+            "charts": [],
+            "notes": ["Designer returned non-JSON; charts skipped."],
             "_parse_fallback": True,
         }
     return {"_parse_fallback": True, "_raw": snippet}

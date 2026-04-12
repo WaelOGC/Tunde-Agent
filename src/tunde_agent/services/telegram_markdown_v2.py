@@ -9,7 +9,7 @@ from __future__ import annotations
 import html as html_module
 import re
 from collections.abc import Sequence
-from typing import Final
+from typing import Any, Final
 from urllib.parse import urlparse
 
 # Characters that must be escaped outside of intentional entities.
@@ -233,6 +233,41 @@ def escape_telegram_html(text: str) -> str:
     )
 
 
+def _telegram_rule_line() -> str:
+    """Visual separator safe in Telegram HTML (monospace line)."""
+    return "<code>━━━━━━━━━━━━━━━━━━━━</code>"
+
+
+def _chart_metrics_ascii_block(chart_metrics: dict[str, Any] | None) -> str:
+    """Compact text bar chart for Telegram HTML (inside <pre>)."""
+    if not isinstance(chart_metrics, dict):
+        return ""
+    labels = chart_metrics.get("labels")
+    values = chart_metrics.get("values")
+    if not isinstance(labels, list) or not isinstance(values, list):
+        return ""
+    rows: list[str] = []
+    nums: list[float] = []
+    for v in values[:8]:
+        try:
+            if isinstance(v, (int, float)):
+                nums.append(float(v))
+            else:
+                nums.append(float(str(v).replace(",", "").replace("%", "").strip()))
+        except (TypeError, ValueError):
+            return ""
+    lbs = [str(x)[:14] for x in labels[: len(nums)]]
+    if len(lbs) != len(nums) or len(nums) < 2:
+        return ""
+    mx = max(nums) or 1.0
+    for lb, n in zip(lbs, nums):
+        w = max(1, int((n / mx) * 12))
+        line = f"{lb[:14]:14} {'▓' * w} {n:g}"
+        rows.append(escape_telegram_html(line))
+    inner = "\n".join(rows)
+    return f"<b>Key series</b>\n<pre>{inner}</pre>"
+
+
 def format_telegram_mission_teaser_html(
     topic: str,
     *,
@@ -240,11 +275,12 @@ def format_telegram_mission_teaser_html(
     executive_summary: str,
     insights: Sequence[str],
     report_url: str | None,
+    chart_metrics: dict[str, Any] | None = None,
     max_summary_chars: int = 420,
     max_bullets: int = 5,
 ) -> str:
     """
-    Same content as ``format_telegram_mission_teaser`` but using Telegram HTML mode.
+    Telegram HTML briefing: headings, separators, bullets, optional ASCII chart from metrics.
 
     The CTA is a real ``<a href=\"...\">`` link (reliable in clients; MarkdownV2 links are finicky).
     """
@@ -253,21 +289,31 @@ def format_telegram_mission_teaser_html(
     lines.append(f"<b>📌 {escape_telegram_html(t)}</b>")
     tl = (tagline or "").strip()
     if tl:
-        lines.append(escape_telegram_html(tl[:240]))
+        lines.append(f"<i>{escape_telegram_html(tl[:240])}</i>")
     lines.append("")
-    lines.append("<b>TL;DR</b>")
+    lines.append(_telegram_rule_line())
+    lines.append("")
+    lines.append("<b>Executive thesis</b>")
     es = (executive_summary or "").strip()
     if len(es) > max_summary_chars:
         cut = es[: max_summary_chars - 1]
         es = cut.rsplit(" ", 1)[0] + "…" if len(cut) > 80 else cut + "…"
-    lines.append(escape_telegram_html(es or "See the visual report for the full narrative."))
+    lines.append(f"<blockquote>{escape_telegram_html(es or 'See the visual report for the full narrative.')}</blockquote>")
     lines.append("")
-    lines.append("<b>Highlights</b>")
+    chart_block = _chart_metrics_ascii_block(chart_metrics)
+    if chart_block:
+        lines.append(chart_block)
+        lines.append("")
+        lines.append(_telegram_rule_line())
+        lines.append("")
+    lines.append("<b>Key signals</b>")
     bullets = [str(x).strip() for x in insights if x and str(x).strip()][:max_bullets]
     if not bullets:
         bullets = ["Charts, sources, and visuals are on the landing page."]
-    for b in bullets:
-        lines.append("• " + escape_telegram_html(b[:340]))
+    for i, b in enumerate(bullets, 1):
+        lines.append(f"{i}. {escape_telegram_html(b[:340])}")
+    lines.append("")
+    lines.append(_telegram_rule_line())
     lines.append("")
     lines.append("<b>Full visual analytics</b>")
     lines.append("")
@@ -302,7 +348,7 @@ def tunde_sign_off_html() -> str:
     """HTML-mode closing line (italic body escaped)."""
     return (
         "\n\n— Tunde ✨\n<i>"
-        + escape_telegram_html("Smart, insightful, and glad to help — your cheerful research partner.")
+        + escape_telegram_html("Built for Visionaries by Wael Safan & NewFinity")
         + "</i>"
     )
 
@@ -392,7 +438,7 @@ def tunde_sign_off_markdown_v2() -> str:
     """Closing line; italic body escaped."""
     return (
         "\n\n— Tunde ✨\n_"
-        + escape_markdown_v2("Smart, insightful, and glad to help — your cheerful research partner.")
+        + escape_markdown_v2("Built for Visionaries by Wael Safan & NewFinity")
         + "_"
     )
 

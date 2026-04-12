@@ -34,6 +34,19 @@ uvicorn tunde_agent.main:app --reload
 
 Ensure PostgreSQL is running and `DATABASE_URL` matches your instance.
 
+## How to use (Telegram)
+
+With the bot running and `TELEGRAM_TOKEN` set, open your bot in Telegram:
+
+1. Send **`/start`** — you get a **short welcome** (no long command list) and a **pillar menu** (Business, Engineering, Creative, Video, Web, About).
+2. Tap a pillar, then a track. The bot **edits the same message** as you navigate so the chat stays tidy.
+3. When asked for a topic or image brief, **send your next message as plain text**.
+4. **Photo edits:** send a **photo** with a **caption** describing the change (e.g. new background), *or* send the photo first, then a short text instruction. **Creative → 📷 Edit my photo** opens the same flow. Cancel a two-step edit with **`/cancel_photo_edit`**. Requires `GEMINI_API_KEY` and `GEMINI_IMAGE_MODEL`.
+5. **Video (Veo):** **Pro Video Generation → 10 / 20 / 30** — tap a duration tier, then send your **scene description** as the next message. Renders are async (often minutes); the bot delivers an MP4. Cancel a waiting tier with **`/cancel_video`**. Set `GEMINI_VIDEO_MODEL` (see `.env.example`); optional `TUNDE_VEO_*` tuning in [docs/media_standards.md](docs/media_standards.md).
+6. After a **deep research** report appears, use the **inline row on that message** for view, landing page, **📥 Export to PDF**, Word, CSV, email, and more. Cancels for email or custom landing use **buttons** on the instruction messages.
+
+Details: [`docs/ux_framework.md`](docs/ux_framework.md) and [`docs/media_standards.md`](docs/media_standards.md).
+
 ## Project layout
 
-See the scaffold under `src/tunde_agent/` (`api`, `config`, `db`, `models`, `domain`, `services`, `tools`) and [`docs/architecture.md`](docs/architecture.md).
+See the scaffold under `src/tunde_agent/` (`api`, `config`, `db`, `models`, `domain`, `services`, `tools`) and [`docs/architecture.md`](docs/architecture.md). Multi-agent orchestration and Gemini vs DeepSeek routing: [`docs/multi_agent.md`](docs/multi_agent.md).

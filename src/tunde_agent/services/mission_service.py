@@ -20,10 +20,10 @@ from tunde_agent.db.principal import ensure_principal_user
 from tunde_agent.db.session import db_session
 from tunde_agent.domain.approval_gate import request_human_approval
 from tunde_agent.models.audit_log import AuditLog
+from tunde_agent.multi_agent.agents.uiux_agent import UIUXAgent
 from tunde_agent.services.llm_service import LLMError
 from tunde_agent.services.telegram_markdown_v2 import (
     format_approval_photo_caption,
-    format_telegram_mission_teaser_html,
     telegram_inline_keyboard_url_allowed,
     tunde_sign_off_html,
 )
@@ -383,14 +383,14 @@ def execute_research_mission(
     except Exception:
         logger.exception("Mission: illustrator failed; landing page will omit AI images")
 
+    cm0 = delivery.get("analyst_chart_metrics")
+    cm_dict: dict = cm0 if isinstance(cm0, dict) else {}
+
     report_id: str | None = None
     report_page_url: str | None = None
     rd = str(uuid.uuid4())
     try:
         from tunde_agent.services.report_html import build_landing_page_html, reports_dir
-
-        cm = delivery.get("analyst_chart_metrics")
-        cm_dict = cm if isinstance(cm, dict) else {}
         chart_embeds: list[dict[str, str]] = []
         for item in charts_raw:
             if not isinstance(item, (tuple, list)) or len(item) < 1:
@@ -458,12 +458,13 @@ def execute_research_mission(
     if not (report_page_url or "").strip():
         logger.error("MISSION_ERROR: report_page_url is empty!")
 
-    teaser_body = format_telegram_mission_teaser_html(
+    teaser_body = UIUXAgent.format_mission_teaser_html(
         topic_clean,
         tagline=tagline,
         executive_summary=exec_sum or "No executive summary returned.",
         insights=insights_list,
         report_url=report_page_url,
+        chart_metrics=cm_dict or None,
     )
     delivery_html = (
         "<b>✨ Tunde · Visual briefing</b>\n\n"

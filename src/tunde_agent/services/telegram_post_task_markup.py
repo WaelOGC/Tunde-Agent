@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import uuid
 
+from tunde_agent.services.telegram_markdown_v2 import telegram_inline_keyboard_url_allowed
+
 # Callback prefixes (1 char + ":" + UUID) must stay ≤ 64 bytes — length is 38.
-_POST_CALLBACK_PREFIXES = frozenset("fwgbmqvs")
+_POST_CALLBACK_PREFIXES = frozenset("olfwgbmqvs")
 
 
 def post_task_reply_markup_json(report_id: str, report_url: str | None) -> str | None:
@@ -23,28 +25,31 @@ def post_task_reply_markup_json(report_id: str, report_url: str | None) -> str |
 
     rows: list[list[dict[str, str]]] = []
     ru = (report_url or "").strip()
-    if ru:
-        rows.append(
-            [{"text": "🏢 Open landing page", "url": ru[:2048]}],
-        )
+    if ru and telegram_inline_keyboard_url_allowed(ru):
+        rows.append([{"text": "🔗 Open in browser", "url": ru[:2048]}])
 
+    rows.append(
+        [
+            {"text": "🌐 View report", "callback_data": f"o:{rid}"},
+            {"text": "🎨 Landing page", "callback_data": f"l:{rid}"},
+            {"text": "📄 PDF", "callback_data": f"f:{rid}"},
+        ],
+    )
+    rows.append([{"text": "📥 Export to PDF", "callback_data": f"f:{rid}"}])
+    rows.append([{"text": "📝 Word", "callback_data": f"w:{rid}"}])
     rows.extend(
         [
             [
-                {"text": "📄 Generate PDF", "callback_data": f"f:{rid}"},
-                {"text": "📝 Export to Word", "callback_data": f"w:{rid}"},
+                {"text": "📊 CSV", "callback_data": f"g:{rid}"},
+                {"text": "📦 HTML export", "callback_data": f"b:{rid}"},
             ],
             [
-                {"text": "📊 Sheet (CSV)", "callback_data": f"g:{rid}"},
-                {"text": "🏢 Tailwind page", "callback_data": f"b:{rid}"},
+                {"text": "📧 Email", "callback_data": f"m:{rid}"},
+                {"text": "🧐 Chat on report", "callback_data": f"q:{rid}"},
             ],
             [
-                {"text": "📧 Send to Email", "callback_data": f"m:{rid}"},
-                {"text": "🧐 Chat with report", "callback_data": f"q:{rid}"},
-            ],
-            [
-                {"text": "🔄 Compare previous", "callback_data": f"v:{rid}"},
-                {"text": "📝 Summarize more", "callback_data": f"s:{rid}"},
+                {"text": "🔄 Compare", "callback_data": f"v:{rid}"},
+                {"text": "📝 Summarize", "callback_data": f"s:{rid}"},
             ],
         ],
     )

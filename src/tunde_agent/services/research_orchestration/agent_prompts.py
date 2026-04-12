@@ -6,12 +6,19 @@ General-purpose: no domain-specific examples (finance, news, biology, etc.).
 
 from __future__ import annotations
 
+from tunde_agent.services.research_orchestration.prompts.analyst_prompt import (
+    ANALYST_SYSTEM,
+    ANALYST_USER_SCHEMA,
+)
+
 # Master / orchestrator — planning + final quality gate (output is JSON only).
 MASTER_ORCHESTRATOR_SYSTEM = """You are the Orchestrator for a research pipeline. You do not chat with the end user directly in this role.
 Your job is to (1) break a research goal into clear, domain-agnostic sub-goals and (2) later judge whether a draft synthesis is ready to deliver or needs revision.
 
 Rules:
 - Stay general: the topic may be business, science, policy, culture, technology, health, or anything else.
+- **Deep research standard:** plans and gate decisions must push for data-backed claims, professional terminology,
+  explicit limitations, and structured comparison — not surface-level summaries or generic advice.
 - Never invent URLs or citations; only reference what is supplied.
 - Output ONLY valid JSON. No markdown fences, no commentary outside JSON.
 - Be concise in JSON string values."""
@@ -45,57 +52,6 @@ When false, you may omit or shorten tagline/executive_summary/insights but revis
 Designer / charts context (may be empty):
 {designer_context}
 """
-
-# Analyst — synthesis from extracted text + optional vision readings; multilingual output.
-ANALYST_SYSTEM = """You are a Research Analyst. You synthesize evidence from multiple plain-text extracts (possibly multilingual) and optional vision readings from charts or figures.
-
-Rules:
-- Use the provided source material and vision JSON as the primary ground truth. When the user goal is **market analysis, feasibility, sizing, forecasting, or investment-style** and the extracts are thin on numbers, you must still populate **insights** and **executive_summary** with **explicitly labeled estimates** (e.g. “Indicative range based on typical sector multiples…”, “Order-of-magnitude assumption: …”) derived from reasonable reading of the text — **never** deliver only generic frameworks, checklists, or “steps to analyze” without quantitative substance.
-- Sources may be in several languages; integrate them without losing technical nuance (keep proper names, units, and terminology in original form when precision matters).
-- Avoid generic filler; prioritize specific facts, numbers, named entities, and distinct viewpoints across sources. **Lead with the quantitative story** when the topic demands it.
-- Adapt depth to the topic (technical, commercial, scientific, or general) without assuming one domain.
-- If the sources or vision readings contain **any** statistics, percentages, counts, or comparable numeric series (two or more values), you **must** populate ``chart_metrics`` so a summary chart can be generated; only use null when no such numbers exist at all. If only rough magnitudes are inferable, approximate in ``chart_metrics`` and state the assumption in ``insights`` or ``open_questions``.
-- For **feasibility**, **market**, **product**, **investment**, or **operations** topics, you **must** populate ``feasibility_deep_dive`` with **concrete estimated figures** (budget bands, milestone dates or phases, ROI or payback commentary, feasibility verdict). Use labeled projections when sources lack hard numbers.
-- Output ONLY valid JSON. No markdown fences."""
-
-ANALYST_USER_SCHEMA = """Output language directive:
-{output_lang_instruction}
-
-Topic and planner context (JSON): {plan_json}
-
-Source index:
-{index_lines}
-
-{vision_block}
-
-Extracted source text (may be truncated, multiple languages possible):
-{packed}
-
-Return JSON:
-{{
-  "executive_summary": "one or two sentences in the output language above",
-  "insights": ["bullet strings, 4–10 items, specific where possible — output language above"],
-  "global_perspective": ["1–4 bullets: how regional, linguistic, or cross-market sources align or diverge; use 'Global perspective:' style labels if helpful"],
-  "open_questions": ["gaps or uncertainties tied to missing/weak evidence"],
-  "source_usage_notes": ["brief note per source index number used heavily, or empty if none"],
-  "chart_metrics": null or {{
-    "title": "short chart title",
-    "labels": ["category A", "category B", "..."],
-    "values": [number, number, "..."],
-    "chart_kind": "auto | bar | grouped_bar | line | area | radar | doughnut",
-    "intelligence_caption": "one sentence: why this visualization matters / what to notice (e.g. inflection point, gap between regions)",
-    "secondary_label": "optional; second series name for comparisons",
-    "secondary_values": null or [numbers, same length as values, for side-by-side comparison]
-  }},
-  "feasibility_deep_dive": null or {{
-    "budget_summary": "Indicative capex/opex or cost bands with assumptions (output language above)",
-    "milestones": ["phase or date-bound deliverable with effort/cost hint", "..."],
-    "roi_commentary": "Payback, NPV-style narrative, or unit economics — figures labeled as estimates",
-    "risk_and_mitigation": ["top risk + mitigation", "..."],
-    "feasibility_verdict": "one sharp sentence: go / no-go / conditional with triggers"
-  }}
-}}
-{revision_block}"""
 
 # Verifier — cross-source audit.
 VERIFIER_SYSTEM = """You are a Critical Verifier. You compare claims implied by a draft synthesis against the original source extracts.

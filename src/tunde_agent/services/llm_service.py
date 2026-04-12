@@ -192,6 +192,23 @@ class DeepSeekClient(BaseLLM):
             raise LLMError("Unexpected DeepSeek response shape.") from e
 
 
+def build_llm_client(settings: Settings, provider: str) -> BaseLLM:
+    """
+    Construct a provider client by name — extension point for additional vendors without
+    touching orchestration code (wire new branches here and in ``model_router``).
+    """
+    p = (provider or "").strip().lower()
+    if p == "gemini":
+        return GeminiClient(settings.gemini_api_key, model=settings.gemini_model)
+    if p == "deepseek":
+        return DeepSeekClient(
+            settings.deepseek_api_key,
+            model=settings.deepseek_model,
+            base_url=settings.deepseek_base_url,
+        )
+    raise LLMError(f"Unsupported LLM provider: {provider!r}. Extend build_llm_client to register it.")
+
+
 class LLMService:
     """Facade: persona system prompt + provider client."""
 
@@ -202,18 +219,7 @@ class LLMService:
 
     def _build_client(self) -> BaseLLM:
         provider = (self._settings.default_llm_provider or "gemini").strip().lower()
-        if provider == "gemini":
-            return GeminiClient(
-                self._settings.gemini_api_key,
-                model=self._settings.gemini_model,
-            )
-        if provider == "deepseek":
-            return DeepSeekClient(
-                self._settings.deepseek_api_key,
-                model=self._settings.deepseek_model,
-                base_url=self._settings.deepseek_base_url,
-            )
-        raise LLMError(f"Unsupported DEFAULT_LLM_PROVIDER: {provider!r}. Use 'gemini' or 'deepseek'.")
+        return build_llm_client(self._settings, provider)
 
     def chat(self, user_message: str) -> str:
         system = self._prompts.system_prompt()

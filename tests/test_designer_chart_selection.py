@@ -11,10 +11,16 @@ def test_infer_time_series_prefers_area() -> None:
     assert d._infer_chart_kind(labels, values, None, None) == "area"
 
 
-def test_infer_share_sum_doughnut() -> None:
+def test_infer_small_share_prefers_polar_not_pie_by_default() -> None:
     labels = ["A", "B", "C"]
     values = [30.0, 45.0, 25.0]
-    assert d._infer_chart_kind(labels, values, None, None) == "doughnut"
+    assert d._infer_chart_kind(labels, values, None, None) == "polarArea"
+
+
+def test_infer_share_respects_explicit_pie_hint() -> None:
+    labels = ["A", "B", "C"]
+    values = [30.0, 45.0, 25.0]
+    assert d._infer_chart_kind(labels, values, None, "pie chart composition") == "doughnut"
 
 
 def test_secondary_forces_grouped_bar() -> None:
@@ -66,6 +72,17 @@ def test_coerce_spec_includes_intel() -> None:
     assert spec is not None
     assert spec["chart_kind"] == "radar"
     assert "growth" in spec["intelligence_caption"]
+
+
+def test_build_quickchart_png_url_from_chartjs_minimal() -> None:
+    cfg = {
+        "type": "bar",
+        "data": {"labels": ["A"], "datasets": [{"label": "x", "data": [1]}]},
+        "options": {},
+    }
+    url = d.build_quickchart_png_url_from_chartjs(cfg)
+    assert url
+    assert "quickchart.io" in url
 
 
 def test_build_landing_page_contains_topic() -> None:

@@ -281,13 +281,21 @@ class TelegramService:
                 payload.pop("reply_markup", None)
                 self._post_form_result("sendMessage", payload)
 
-    def answer_callback_query(self, callback_query_id: str, *, text: str | None = None) -> None:
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        *,
+        text: str | None = None,
+        url: str | None = None,
+    ) -> None:
         if not self.token:
             return
         payload: dict[str, Any] = {"callback_query_id": callback_query_id}
         if text is not None:
             payload["text"] = text[:200]
             payload["show_alert"] = False
+        if url:
+            payload["url"] = str(url).strip()[:2048]
         with httpx.Client(timeout=30.0) as client:
             r = client.post(f"{self._base_url()}/answerCallbackQuery", json=payload)
         self._raise_for_telegram(r, "answerCallbackQuery")
@@ -337,12 +345,85 @@ class TelegramService:
             return
         logger.debug("Telegram %s ok", method)
 
+    def edit_message_html_in_chat(
+        self,
+        chat_id: str | int,
+        message_id: int,
+        text: str,
+        *,
+        reply_markup_json: str | None = None,
+    ) -> tuple[bool, str]:
+        """
+        ``editMessageText`` with ``parse_mode=HTML`` for nested menu navigation.
+
+        Returns ``(ok, description)`` so callers can fall back to ``sendMessage`` if the message
+        is no longer editable.
+        """
+        if not self.token:
+            return False, "TELEGRAM_TOKEN empty"
+        data: dict[str, str] = {
+            "chat_id": str(chat_id).strip(),
+            "message_id": str(int(message_id)),
+            "text": (text or "")[:4096],
+            "parse_mode": "HTML",
+        }
+        if reply_markup_json:
+            data["reply_markup"] = reply_markup_json
+        return self._post_form_result("editMessageText", data)
+
+    def fetch_telegram_file_bytes(self, file_id: str) -> tuple[bytes, str] | None:
+        """
+        Resolve a Bot API ``file_id`` via ``getFile`` and download the file.
+
+        Returns ``(raw_bytes, mime_guess)`` or ``None`` on failure. MIME is inferred from the path
+        extension (Telegram does not always send ``mime_type`` on ``getFile``).
+        """
+        if not self.token:
+            return None
+        fid = (file_id or "").strip()
+        if not fid:
+            return None
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                r = client.get(f"{self._base_url()}/getFile", params={"file_id": fid})
+                body = r.json()
+        except Exception as exc:
+            logger.warning("Telegram getFile failed: %s", exc)
+            return None
+        if not body.get("ok"):
+            logger.warning("Telegram getFile not ok: %s", body.get("description", body))
+            return None
+        res = body.get("result") or {}
+        path = res.get("file_path")
+        if not isinstance(path, str) or not path.strip():
+            return None
+        path = path.strip()
+        lower = path.lower()
+        if lower.endswith(".png"):
+            mime = "image/png"
+        elif lower.endswith(".webp"):
+            mime = "image/webp"
+        elif lower.endswith(".gif"):
+            mime = "image/gif"
+        else:
+            mime = "image/jpeg"
+        url = f"https://api.telegram.org/file/bot{self.token}/{path}"
+        try:
+            with httpx.Client(timeout=120.0) as client:
+                dr = client.get(url)
+                dr.raise_for_status()
+                return dr.content, mime
+        except Exception as exc:
+            logger.warning("Telegram file download failed: %s", exc)
+            return None
+
     def send_message_to_chat(
         self,
         chat_id: str | int,
         text: str,
         *,
         reply_markup_json: str | None = None,
+        parse_mode: str | None = None,
     ) -> bool:
         """sendMessage to an explicit chat (e.g. right after user messages the bot)."""
         if not self.token:
@@ -351,10 +432,51 @@ class TelegramService:
         if not cid:
             return False
         payload: dict[str, str] = {"chat_id": cid, "text": text[:4096]}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
         if reply_markup_json:
             payload["reply_markup"] = reply_markup_json
         self._post_form("sendMessage", payload)
         return True
+
+    def send_video_to_chat(
+        self,
+        chat_id: str | int,
+        video_bytes: bytes,
+        caption: str = "",
+        *,
+        filename: str = "tunde_video.mp4",
+    ) -> None:
+        """Send an MP4 as ``sendVideo`` (falls back to ``sendDocument`` if the API rejects the upload)."""
+        if not self.token:
+            return
+        cid = str(chat_id).strip()
+        if not cid:
+            return
+        cap = (caption or "")[:1024]
+        data: dict[str, str] = {"chat_id": cid, "caption": cap}
+        with httpx.Client(timeout=300.0) as client:
+            r = client.post(
+                f"{self._base_url()}/sendVideo",
+                data=data,
+                files={"video": (filename, bytes(video_bytes), "video/mp4")},
+            )
+        try:
+            body = r.json()
+        except Exception:
+            r.raise_for_status()
+            return
+        if body.get("ok"):
+            return
+        desc = str(body.get("description", ""))
+        logger.warning("Telegram sendVideo failed (%s); retrying as document.", desc[:200])
+        self.send_document_to_chat(
+            cid,
+            video_bytes,
+            cap or "Video (MP4)",
+            filename=filename,
+            mime="video/mp4",
+        )
 
     def send_photo_to_chat(
         self,

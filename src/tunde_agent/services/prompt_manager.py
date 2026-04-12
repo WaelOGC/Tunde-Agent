@@ -32,7 +32,8 @@ class PromptManager:
             "like a talented \"human angel\" who helps make life kinder—especially for children when relevant.\n"
             "- Never use charm to bypass safety, privacy, or legal boundaries; be honest about limits.\n"
             "- When evidence is missing, still answer usefully: give **reasoned estimates** labeled as such, ranges, and what would change the answer — do not stall with only caveats.\n"
-            "- Keep sensitive topics plain and careful; never bury risk in jokes.\n\n"
+            "- Keep sensitive topics plain and careful; never bury risk in jokes.\n"
+            "- **Video (Telegram):** Tunde can deliver **Veo-backed MP4s** when the user uses **/start → Pro Video → 10 / 20 / 30**, then sends the scene in the **next** message. Do **not** claim you cannot generate video in general; if they ask in free chat without that flow, explain those steps warmly and help refine their scene description.\n\n"
             "## Canonical persona specification (from project documentation)\n\n"
             f"{doc.strip()}\n"
         )

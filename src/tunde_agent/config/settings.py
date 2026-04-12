@@ -104,6 +104,26 @@ class Settings(BaseSettings):
         validation_alias="GEMINI_IMAGE_MODEL",
         description="Model id for native Gemini image generation (generateContent + responseModalities IMAGE).",
     )
+    gemini_video_model: str = Field(
+        default="veo-3.1-generate-preview",
+        validation_alias="GEMINI_VIDEO_MODEL",
+        description="Veo model id for Telegram video presets (predictLongRunning).",
+    )
+    veo_aspect_ratio: str = Field(
+        default="16:9",
+        validation_alias="TUNDE_VEO_ASPECT_RATIO",
+        description='Veo aspect ratio: "16:9" or "9:16".',
+    )
+    veo_person_generation: str = Field(
+        default="allow_all",
+        validation_alias="TUNDE_VEO_PERSON_GENERATION",
+        description='Veo personGeneration (e.g. allow_all, allow_adult, dont_allow) — see Google regional rules.',
+    )
+    veo_first_clip_resolution: str = Field(
+        default="720p",
+        validation_alias="TUNDE_VEO_FIRST_CLIP_RESOLUTION",
+        description='First clip resolution for preset "10" only: "720p" or "1080p" (1080p forces 8s). Presets 20/30 use 720p for extension.',
+    )
     deepseek_api_key: str = Field(default="", validation_alias="DEEPSEEK_API_KEY")
     deepseek_model: str = Field(default="deepseek-chat", validation_alias="DEEPSEEK_MODEL")
     deepseek_base_url: str = Field(default="https://api.deepseek.com", validation_alias="DEEPSEEK_BASE_URL")
@@ -170,6 +190,42 @@ class Settings(BaseSettings):
         if s in ("0", "false", "no", "off"):
             return False
         return True
+
+    @field_validator("gemini_video_model", mode="before")
+    @classmethod
+    def normalize_gemini_video_model(cls, v: object) -> str:
+        if v is None:
+            return "veo-3.1-generate-preview"
+        s = str(v).strip()
+        if not s:
+            return "veo-3.1-generate-preview"
+        if s.startswith("models/"):
+            s = s[len("models/") :]
+        return s
+
+    @field_validator("veo_aspect_ratio", mode="before")
+    @classmethod
+    def normalize_veo_aspect_ratio(cls, v: object) -> str:
+        s = str(v or "").strip()
+        if s in ("16:9", "9:16"):
+            return s
+        return "16:9"
+
+    @field_validator("veo_person_generation", mode="before")
+    @classmethod
+    def normalize_veo_person_generation(cls, v: object) -> str:
+        s = str(v or "").strip().lower()
+        if s in ("allow_all", "allow_adult", "dont_allow"):
+            return s
+        return "allow_all"
+
+    @field_validator("veo_first_clip_resolution", mode="before")
+    @classmethod
+    def normalize_veo_first_clip_resolution(cls, v: object) -> str:
+        s = str(v or "").strip().lower()
+        if s in ("720p", "1080p"):
+            return s
+        return "720p"
 
     @field_validator("gemini_image_model", mode="before")
     @classmethod

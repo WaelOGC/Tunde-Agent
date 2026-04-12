@@ -76,7 +76,17 @@ def _process_callback_query(cq: dict, settings: Settings) -> None:
 
     tg = TelegramService(settings)
 
-    if prefix in ("f", "w", "g", "b", "m", "q", "v", "s"):
+    if prefix == "u":
+        from tunde_agent.services.telegram_ux_menus import process_ux_callback_query
+
+        try:
+            process_ux_callback_query(cq, settings)
+        except Exception:
+            logger.exception("telegram poller: UX menu callback failed")
+            tg.answer_callback_query(cqid, text="Server error.")
+        return
+
+    if prefix in ("o", "l", "f", "w", "g", "b", "m", "q", "v", "s"):
         try:
             rid = uuid.UUID(rest.strip())
         except ValueError:

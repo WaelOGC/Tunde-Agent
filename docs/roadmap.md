@@ -1,6 +1,6 @@
 # Roadmap
 
-Phased delivery for Tunde Agent from a **personal web MVP** toward **desktop integration** and eventually **public scalability and hardening**. Architecture is in [architecture.md](./architecture.md); features in [features.md](./features.md); runbooks and hosting in [infrastructure.md](./infrastructure.md); safety and change limits in [self_improvement_rules.md](./self_improvement_rules.md). **What is already built in git** is summarized in [current_implementation.md](./current_implementation.md).
+Phased delivery for Tunde Agent from a **personal web MVP** toward **desktop integration** and eventually **public scalability and hardening**. Architecture is in [architecture.md](./architecture.md); features in [features.md](./features.md); runbooks and hosting in [infrastructure.md](./infrastructure.md); safety and change limits in [self_improvement_rules.md](./self_improvement_rules.md). **What is already built in git** is summarized in [current_implementation.md](./current_implementation.md). The **multi-agent runtime and provider routing** are documented in [multi_agent.md](./multi_agent.md).
 
 ---
 
@@ -69,3 +69,18 @@ Each phase **builds on** the previous one; skipping Phase 2 is possible for a pu
 ## Alignment with safety rules
 
 Phase 1 adopts the **security kernel** mindset at a minimal level (no self-modifying auth). Phase 2 adds **local trust**. Phase 3 demands **formal controls** and stricter change classes—see [self_improvement_rules.md](./self_improvement_rules.md).
+
+---
+
+## Future roadmap: self-evolution framework
+
+This is a **product and engineering direction**, not an autonomous loop in production today. Concrete milestones, gates, and “what is allowed to change without human merge” are spelled out in [multi_agent.md §5](./multi_agent.md#5-future-roadmap-self-evolution-framework) (market awareness from web search, feedback-driven offline evaluation, sandboxed routing/UI experiments, human approval before promotion). Phase 3 scalability work above is the natural home for **formalizing** those controls once multi-tenant and compliance requirements land.
+
+---
+
+## Integrated product tracks (Telegram & exports)
+
+| Track | Direction |
+| ----- | --------- |
+| **Professional PDF export** | Today: server-side PDF from saved report HTML (`post_task` **📄 PDF** / **📥 Export to PDF**). Next: branded templates, cover page, table of contents, and optional appendices from structured mission JSON. |
+| **Voiceover synthesis** | Narration aligned to video presets (see [media_standards.md](./media_standards.md)); gated behind script approval and provider policy review before automation. |

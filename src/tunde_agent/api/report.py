@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 
 from tunde_agent.services.report_html import reports_dir
 
@@ -19,11 +19,12 @@ router = APIRouter(tags=["reports"])
 
 
 @router.get("/reports/view/{report_id}")
-def view_report(report_id: str) -> FileResponse:
+def view_report(report_id: str) -> HTMLResponse:
     """
     Return the self-contained HTML report for a mission-generated ``report_id`` (UUID).
 
     Files are written by ``mission_service`` after a successful approved delivery.
+    Served as inline HTML (never ``Content-Disposition: attachment``) so browsers render the page.
     """
     try:
         uuid.UUID(report_id)
@@ -32,4 +33,5 @@ def view_report(report_id: str) -> FileResponse:
     path = reports_dir() / f"{report_id}.html"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Report not found or expired")
-    return FileResponse(path, media_type="text/html; charset=utf-8", filename=f"tunde-report-{report_id}.html")
+    body = path.read_text(encoding="utf-8")
+    return HTMLResponse(content=body, media_type="text/html; charset=utf-8")

@@ -6,6 +6,10 @@ Technical blueprint for Tunde Agent: components, boundaries, data flow, and pers
 
 **What matches the repo today:** [current_implementation.md](./current_implementation.md) (HTTP routes, Telegram missions and approvals, migrations, Docker, search API rotation). Use it when this document describes product surfaces not yet present in the tree (for example the SPA below).
 
+**Multi-agent runtime:** [multi_agent.md](./multi_agent.md) — orchestrator vs research / analyst / UI agents, Gemini vs DeepSeek routing (`TaskKind`), and the self-evolution roadmap framing.
+
+**Telegram UX:** [ux_framework.md](./ux_framework.md) — nested inline menus (`u:` callbacks), `editMessageText` navigation, and handoff to free-text topic capture.
+
 ---
 
 ## 1. Goals and non-goals

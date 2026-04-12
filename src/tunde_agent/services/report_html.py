@@ -10,6 +10,7 @@ import base64
 import hashlib
 import html
 import json
+import re
 from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import quote
@@ -95,6 +96,49 @@ def _chartjs_interactive_block(cm: dict[str, Any], topic: str) -> tuple[str, str
 
 def _esc(s: str) -> str:
     return html.escape((s or "").strip(), quote=False)
+
+
+_URL_IN_TEXT = re.compile(r"(https?://[^\s<>\")\]]+)")
+
+
+def _linkify_http_urls(text: str) -> str:
+    """Wrap http(s) URLs in external links; escape all text."""
+    t = text or ""
+    parts: list[str] = []
+    pos = 0
+    for m in _URL_IN_TEXT.finditer(t):
+        parts.append(_esc(t[pos : m.start()]))
+        u = m.group(1)
+        parts.append(
+            f'<a class="src-link" href="{html.escape(u, quote=True)}" '
+            f'target="_blank" rel="noopener noreferrer">{_esc(u)}</a>'
+        )
+        pos = m.end()
+    parts.append(_esc(t[pos:]))
+    inner = "".join(parts)
+    return "<br />".join(inner.splitlines())
+
+
+def _markdown_report_to_simple_html(raw: str) -> str:
+    """Lightweight GFM-ish fragment (##/###, paragraphs); no raw HTML pass-through."""
+    chunks: list[str] = []
+    for block in re.split(r"\n{2,}", (raw or "").strip()):
+        b = block.strip()
+        if not b:
+            continue
+        first_line, sep, rest = b.partition("\n")
+        fl = first_line.strip()
+        if fl.startswith("### "):
+            chunks.append(f'<h3 class="md-h3">{_esc(fl[4:].strip())}</h3>')
+            if rest.strip():
+                chunks.append(f'<p class="md-p">{_linkify_http_urls(rest.strip())}</p>')
+        elif fl.startswith("## "):
+            chunks.append(f'<h2 class="md-h2">{_esc(fl[3:].strip())}</h2>')
+            if rest.strip():
+                chunks.append(f'<p class="md-p">{_linkify_http_urls(rest.strip())}</p>')
+        else:
+            chunks.append(f'<p class="md-p">{_linkify_http_urls(b)}</p>')
+    return "\n".join(chunks)
 
 
 def _placeholder_svg_data_uri(hue: int) -> str:
@@ -221,7 +265,7 @@ def build_landing_page_html(
             f'<article class="report-card report-card--chart">'
             f'<header class="card-head"><span class="chart-pill">{kind}</span><h3 class="card-title">Analytics</h3></header>'
             f'<div class="chart-media">'
-            f'<img class="tunde-img-fallback" src="data:image/png;base64,{b64}" alt="{cap}" width="720" height="440" loading="lazy"/>'
+            f'<img class="tunde-img-fallback chart-png" src="data:image/png;base64,{b64}" alt="{cap}" loading="lazy"/>'
             f"</div>"
             f'<p class="chart-caption">{cap}</p>'
             f'<p class="smart-observation"><span class="so-label">Smart observation</span>{obs or "—"}</p>'
@@ -254,7 +298,7 @@ def build_landing_page_html(
             )
     ill_section_inner = "".join(ill_rest) if ill_rest else ""
 
-    gp_items = "".join(f'<li class="ins-li">{_esc(g)}</li>' for g in gp) if gp else ""
+    gp_items = "".join(f'<li class="ins-li">{_linkify_http_urls(g)}</li>' for g in gp) if gp else ""
     gp_section = ""
     if gp_items:
         gp_section = (
@@ -262,11 +306,21 @@ def build_landing_page_html(
             f'Global perspectives</h2></header><ul class="ins-list">{gp_items}</ul></section>'
         )
 
-    det_items = "".join(f'<li class="ins-li">{_esc(d)}</li>' for d in detail) if detail else ""
+    det_items = "".join(f'<li class="ins-li">{_linkify_http_urls(d)}</li>' for d in detail) if detail else ""
     if not det_items and not gp_items:
         det_items = '<li class="ins-li">See executive summary and sources on this page.</li>'
 
     feasibility_block = _feasibility_section_html(delivery)
+
+    md_raw = delivery.get("markdown_report")
+    markdown_section = ""
+    if isinstance(md_raw, str) and md_raw.strip():
+        markdown_section = (
+            '<section id="markdown-brief" class="report-card report-card--readable">'
+            '<header class="card-head"><h2 class="section-title">Structured brief</h2></header>'
+            f'<div class="markdown-report">{_markdown_report_to_simple_html(md_raw[:14_000])}</div>'
+            "</section>"
+        )
 
     def _source_anchor(title: str, url: str) -> str:
         u = (url or "").strip()
@@ -336,7 +390,7 @@ html {{ scroll-behavior: smooth; }}
 body {{
   margin: 0; min-height: 100vh; color: var(--text);
   font-family: var(--font-body), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 1.02rem; line-height: 1.65;
+  font-size: 0.97rem; line-height: 1.62;
   background:
     radial-gradient(ellipse 1400px 900px at 15% -10%, hsla(var(--hue), 45%, 22%, 0.55), transparent 55%),
     radial-gradient(ellipse 1000px 700px at 95% 30%, hsla(calc(var(--hue) + 55), 40%, 18%, 0.4), transparent 50%),
@@ -448,7 +502,7 @@ html[dir="rtl"] .sidebar {{
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  padding: 28px clamp(16px, 3vw, 40px) 100px;
+  padding: 36px clamp(20px, 4vw, 48px) 120px;
 }}
 .section.full-bleed {{
   width: 100%;
@@ -456,7 +510,7 @@ html[dir="rtl"] .sidebar {{
   margin-right: 0;
 }}
 .report-card {{
-  margin-bottom: 28px; padding: 40px clamp(24px, 4vw, 48px); border-radius: 20px; width: 100%;
+  margin-bottom: 32px; padding: 28px clamp(20px, 3vw, 36px); border-radius: 16px; width: 100%;
   background: var(--card-bg);
   backdrop-filter: blur(22px);
   border: 1px solid var(--stroke);
@@ -482,11 +536,11 @@ html[dir="rtl"] .sidebar {{
   box-shadow: 0 32px 80px rgba(0,0,0,0.4), 0 0 100px -30px var(--accent-glow);
 }}
 .hero-band h1 {{
-  font-family: var(--font-display); font-weight: 800;
-  font-size: clamp(1.65rem, 2.4vw, 2.75rem);
-  margin: 0 0 16px; line-height: 1.15; letter-spacing: -0.02em;
+  font-family: var(--font-display); font-weight: 700;
+  font-size: clamp(1.2rem, 1.9vw, 1.65rem);
+  margin: 0 0 12px; line-height: 1.25; letter-spacing: -0.015em;
 }}
-.hero-band .tagline {{ font-size: 1.08rem; color: var(--muted); max-width: 56ch; margin: 0; }}
+.hero-band .tagline {{ font-size: 0.95rem; color: var(--muted); max-width: 58ch; margin: 0; line-height: 1.55; }}
 .toolbar {{
   display: flex; flex-wrap: wrap; gap: 14px; margin-top: 32px;
 }}
@@ -504,10 +558,14 @@ html[dir="rtl"] .sidebar {{
 }}
 .card-head {{ margin-bottom: 20px; }}
 .section-title, .card-title {{
-  font-family: var(--font-display); font-weight: 800; margin: 0;
-  font-size: 0.78rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
+  font-family: var(--font-display); font-weight: 700; margin: 0;
+  font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
 }}
-.card-title {{ font-size: 1.05rem; letter-spacing: 0.08em; color: var(--text); }}
+.card-title {{ font-size: 0.92rem; letter-spacing: 0.06em; color: var(--text); font-weight: 650; }}
+.md-h2 {{ font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; margin: 0 0 10px; color: var(--text); }}
+.md-h3 {{ font-family: var(--font-display); font-size: 0.95rem; font-weight: 650; margin: 16px 0 8px; color: rgba(255,255,255,0.92); }}
+.md-p {{ margin: 0 0 14px; color: rgba(255,255,255,0.86); line-height: 1.62; }}
+.report-card--readable .markdown-report {{ max-width: 72ch; }}
 .chart-pill {{
   display: inline-block; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.18em;
   color: var(--accent); margin-bottom: 8px;
@@ -536,14 +594,14 @@ html[dir="rtl"] .sidebar {{
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(0,0,0,0.2);
 }}
-.chart-media img {{ display: block; width: 100%; height: auto; }}
+.chart-media img, .chart-media .chart-png {{ display: block; width: 100%; max-width: min(100%, 480px); height: auto; margin: 0 auto; }}
 .chartjs-wrap {{
-  border-radius: 16px; overflow: hidden; min-height: 360px;
+  border-radius: 14px; overflow: hidden; min-height: 220px; max-width: 520px; margin: 0 auto;
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(0,0,0,0.25);
-  padding: 16px;
+  padding: 12px 14px 18px;
 }}
-.chartjs-wrap canvas {{ max-width: 100% !important; height: auto !important; }}
+.chartjs-wrap canvas {{ max-width: 100% !important; max-height: 280px !important; height: auto !important; }}
 .chart-caption {{ font-size: 0.92rem; color: var(--muted); margin: 12px 0 0; }}
 .smart-observation {{
   margin: 24px 0 0; padding: 20px 22px; border-radius: 14px;
@@ -659,12 +717,10 @@ document.addEventListener('DOMContentLoaded', function() {{
     nav_entries: list[tuple[str, str, str]] = [("#overview", "📋", "Overview")]
     if hero_ill_html:
         nav_entries.append(("#hero-art", "🎨", "Hero"))
-    nav_entries.extend(
-        [
-            ("#summary", "📑", "Research"),
-            ("#metrics", "📊", "Metrics"),
-        ]
-    )
+    nav_entries.append(("#summary", "📑", "Research"))
+    if markdown_section:
+        nav_entries.append(("#markdown-brief", "📄", "Brief"))
+    nav_entries.append(("#metrics", "📊", "Metrics"))
     if feasibility_block:
         nav_entries.append(("#feasibility", "🧭", "Plan"))
     nav_entries.append(("#visuals", "📈", "Charts"))
@@ -699,6 +755,7 @@ document.addEventListener('DOMContentLoaded', function() {{
   <header class="card-head"><h2 class="section-title">Executive overview</h2></header>
   <p class="body-prose">{exec_sum or "—"}</p>
 </section>
+{markdown_section}
 <section id="metrics" class="report-card">
   <header class="card-head"><h2 class="section-title">Key metrics</h2></header>
   {metrics_html or '<p class="body-prose" style="color:var(--muted)">Structured metrics appear when chart data is available.</p>'}

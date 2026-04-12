@@ -16,6 +16,7 @@ from tunde_agent.config.settings import Settings
 from tunde_agent.services.llm_service import LLMError
 from tunde_agent.services.research_orchestration.designer_agent import (
     generate_charts_from_analyst_with_fallback,
+    generate_pngs_from_designer_llm_output,
     has_chartable_metrics,
 )
 from tunde_agent.services.research_orchestration.extraction_agent import fetch_page_text
@@ -30,6 +31,8 @@ from tunde_agent.services.research_orchestration.payload import (
 from tunde_agent.services.research_orchestration.state import ResearchOrchestrationPhase
 from tunde_agent.services.research_orchestration.sub_agents import (
     analyst_run,
+    designer_llm_run,
+    extractor_run,
     master_plan,
     master_quality_gate,
     verifier_run,
@@ -212,6 +215,34 @@ async def run_post_approval_pipeline(
     ]
     index_lines = "\n".join(f"{i + 1}. {title!r} — {url}" for i, (title, url) in enumerate(source_index))
 
+    extractor_out: dict[str, Any] = {}
+    _audit(
+        user_id,
+        "orchestration",
+        phase=ResearchOrchestrationPhase.EXTRACTOR.value,
+    )
+    try:
+        extractor_out = await asyncio.to_thread(
+            extractor_run,
+            settings,
+            topic_clean,
+            packed,
+            vision_text,
+            effective_lang,
+        )
+    except LLMError as exc:
+        _audit(
+            user_id,
+            "orchestration",
+            agent="extractor",
+            outcome="llm_error",
+            detail=str(exc)[:500],
+        )
+        logger.warning("Extractor LLM failed: %s", exc)
+        extractor_out = {}
+    if not isinstance(extractor_out, dict):
+        extractor_out = {}
+
     revision_focus: str | None = None
     analyst_out: dict[str, Any] = {}
     verifier_out: dict[str, Any] = {}
@@ -219,6 +250,7 @@ async def run_post_approval_pipeline(
     gate_approved = False
     last_attempt = 0
     last_charts: list[tuple[bytes, str, str]] = []
+    last_designer_llm_out: dict[str, Any] = {}
 
     for attempt in range(_MAX_REVISION_ATTEMPTS):
         last_attempt = attempt
@@ -239,6 +271,7 @@ async def run_post_approval_pipeline(
                 revision_focus,
                 vision_appendix=vision_text,
                 output_language=effective_lang,
+                extractor_out=extractor_out,
             )
         except LLMError as exc:
             _audit(
@@ -257,6 +290,54 @@ async def run_post_approval_pipeline(
             }
         if not isinstance(analyst_out, dict):
             analyst_out = {}
+
+        _audit(
+            user_id,
+            "orchestration",
+            phase=ResearchOrchestrationPhase.DESIGNER_LLM.value,
+            attempt=attempt,
+        )
+        designer_llm_out: dict[str, Any] = {}
+        try:
+            designer_llm_out = await asyncio.to_thread(
+                designer_llm_run,
+                settings,
+                topic_clean,
+                analyst_out,
+                extractor_out,
+                effective_lang,
+            )
+        except LLMError as exc:
+            _audit(
+                user_id,
+                "orchestration",
+                agent="designer_llm",
+                outcome="llm_error",
+                detail=str(exc)[:500],
+                attempt=attempt,
+            )
+            logger.warning("Designer LLM failed: %s", exc)
+            designer_llm_out = {}
+        if not isinstance(designer_llm_out, dict):
+            designer_llm_out = {}
+        last_designer_llm_out = designer_llm_out
+
+        designer_pngs = await asyncio.to_thread(
+            generate_pngs_from_designer_llm_output,
+            designer_llm_out,
+            theme_topic=topic_clean,
+        )
+        last_charts = list(designer_pngs)
+        if not last_charts and has_chartable_metrics(analyst_out):
+            try:
+                last_charts = await asyncio.to_thread(
+                    generate_charts_from_analyst_with_fallback,
+                    analyst_out,
+                    theme_topic=topic_clean,
+                )
+            except Exception as exc:
+                logger.warning("Designer agent (analyst metrics) failed: %s", exc)
+                last_charts = []
 
         _audit(
             user_id,
@@ -305,32 +386,24 @@ async def run_post_approval_pipeline(
         else:
             chart_reliable = str(verifier_out.get("confidence") or "").lower() in ("high", "medium")
 
-        last_charts: list[tuple[bytes, str, str]] = []
-        if has_chartable_metrics(analyst_out):
-            try:
-                last_charts = await asyncio.to_thread(
-                    generate_charts_from_analyst_with_fallback,
-                    analyst_out,
-                    theme_topic=topic_clean,
-                )
-            except Exception as exc:
-                logger.warning("Designer agent failed: %s", exc)
-                last_charts = []
         designer_note = ""
-        if not has_chartable_metrics(analyst_out):
-            designer_note = "No summary chart: analyst did not return usable chart_metrics (labels + values)."
-        elif not chart_reliable and last_charts:
+        d_charts = designer_llm_out.get("charts") if isinstance(designer_llm_out.get("charts"), list) else []
+        if d_charts:
             designer_note = (
-                "Summary chart generated from analyst metrics; verifier flagged numeric/caveats — interpret with care."
+                f"Designer LLM produced {len(d_charts)} chart config(s); "
+                f"QuickChart PNGs from those specs: {len(designer_pngs)}."
             )
-        elif chart_reliable and last_charts:
-            designer_note = "Summary chart(s) were generated from analyst chart_metrics after verifier sign-off."
-        elif chart_reliable and not last_charts:
-            designer_note = "Verifier approved numeric framing, but QuickChart fetch failed or returned empty."
-        elif not chart_reliable and not last_charts:
+        elif has_chartable_metrics(analyst_out) and last_charts:
+            designer_note = "Charts rendered from analyst chart_metrics (LLM designer skipped or empty)."
+        elif has_chartable_metrics(analyst_out) and not last_charts:
+            designer_note = "Analyst chart_metrics present but no PNG (QuickChart failure or invalid config)."
+        elif not has_chartable_metrics(analyst_out):
+            designer_note = "No chart_metrics from analyst; designer relied on structured narrative only."
+        if not chart_reliable and last_charts:
             designer_note = (
-                "Verifier did not certify chart data; chart_metrics present but QuickChart did not return an image."
-            )
+                (designer_note + " " if designer_note else "")
+                + "Verifier flagged numeric caveats — interpret visuals with care."
+            ).strip()
 
         _audit(
             user_id,
@@ -397,6 +470,8 @@ async def run_post_approval_pipeline(
         telegram_charts=last_charts,
         multilingual_sources=multilingual_sources,
         vision_text=vision_text,
+        designer_llm_output=last_designer_llm_out,
+        extractor_structured=extractor_out,
     )
 
     _audit(
@@ -463,6 +538,8 @@ def _build_delivery_payload(
     telegram_charts: list[tuple[bytes, str, str]] | None = None,
     multilingual_sources: list[dict[str, str]] | None = None,
     vision_text: str = "",
+    designer_llm_output: dict[str, Any] | None = None,
+    extractor_structured: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Normalize to keys consumed by mission_service / format_telegram_report."""
     gate_ok = bool(gate_out.get("approve_for_delivery"))
@@ -548,6 +625,10 @@ def _build_delivery_payload(
     fd = analyst_out.get("feasibility_deep_dive")
     feasibility_deep_dive = fd if isinstance(fd, dict) else None
 
+    md_rep = str(analyst_out.get("markdown_report") or "").strip()
+    dlo = designer_llm_output if isinstance(designer_llm_output, dict) else {}
+    ex_struct = extractor_structured if isinstance(extractor_structured, dict) else {}
+
     return {
         "tagline": tagline,
         "executive_summary": exec_sum,
@@ -563,4 +644,7 @@ def _build_delivery_payload(
         "generated_visual_url": gen_visual_url,
         "analyst_chart_metrics": analyst_chart_metrics,
         "feasibility_deep_dive": feasibility_deep_dive,
+        "markdown_report": md_rep or None,
+        "designer_llm_output": dlo,
+        "extractor_structured": ex_struct or None,
     }

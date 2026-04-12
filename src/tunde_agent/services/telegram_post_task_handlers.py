@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from urllib.parse import urlparse
 
 from tunde_agent.config.settings import Settings
 from tunde_agent.services.llm_service import LLMError, LLMService
@@ -25,9 +26,14 @@ from tunde_agent.services.reporter import (
     read_report_html,
 )
 from tunde_agent.services.telegram_pending_email import set_pending_report_email
+from tunde_agent.services.telegram_pending_landing_design import set_pending_landing_design
 from tunde_agent.services.telegram_report_context import set_report_chat_context
 from tunde_agent.services.telegram_report_history import get_report_pair_for_compare
 from tunde_agent.services.telegram_service import TelegramService
+from tunde_agent.services.telegram_ux_menus import (
+    cancel_email_reply_markup_json,
+    cancel_landing_reply_markup_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +54,7 @@ def process_post_task_callback(
     callback_query_id: str,
     settings: Settings,
 ) -> None:
-    """Dispatch ``f|w|g|b|m|q|v|s`` + ``uuid`` post-report actions."""
+    """Dispatch ``o|l|f|w|g|b|m|q|v|s`` + ``uuid`` post-report actions."""
     tg = TelegramService(settings)
     try:
         uuid.UUID(report_id.strip())
@@ -58,6 +64,14 @@ def process_post_task_callback(
 
     rid = report_id.strip()
     p = prefix.strip().lower()
+
+    if p == "o":
+        _answer_open_report_page(tg, callback_query_id, chat_id, rid, settings)
+        return
+
+    if p == "l":
+        _answer_landing_design_prompt(tg, callback_query_id, chat_id, rid, settings)
+        return
 
     if p == "f":
         _answer_and_generate_pdf(tg, callback_query_id, chat_id, rid, settings)
@@ -85,6 +99,55 @@ def process_post_task_callback(
         return
 
     tg.answer_callback_query(callback_query_id, text="Unknown action.")
+
+
+_LANDING_DESIGN_INSTRUCTION_HTML = (
+    "<b>Custom landing page</b>\n\n"
+    "Describe the layout, sections, colors, and tone you want "
+    "(for example: minimalist corporate, dark mode, hero + metrics + cited sources).\n\n"
+    "Send that brief as your <b>next message</b> — I’ll build a custom page from your notes and this report."
+)
+
+
+def _answer_landing_design_prompt(
+    tg: TelegramService,
+    cqid: str,
+    chat_id: int,
+    rid: str,
+    settings: Settings,
+) -> None:
+    if not load_report_for_export(rid):
+        tg.answer_callback_query(cqid, text="That report is no longer available.")
+        return
+    set_pending_landing_design(chat_id, rid)
+    tg.answer_callback_query(cqid, text="Send your layout brief in chat.")
+    markup = cancel_landing_reply_markup_json(rid)
+    tg.send_message_to_chat(
+        chat_id,
+        _LANDING_DESIGN_INSTRUCTION_HTML + "\n\n<i>Built for Visionaries by Wael Safan &amp; NewFinity</i>",
+        parse_mode="HTML",
+        reply_markup_json=markup,
+    )
+
+
+def _answer_open_report_page(
+    tg: TelegramService,
+    cqid: str,
+    chat_id: int,
+    rid: str,
+    settings: Settings,
+) -> None:
+    url = _build_report_page_url(settings, rid).strip()
+    if not url:
+        tg.answer_callback_query(cqid, text="Report URL unavailable.")
+        return
+    host = (urlparse(url).hostname or "").lower()
+    loopback = host in ("localhost", "127.0.0.1", "::1") or host.endswith(".localhost")
+    if loopback:
+        tg.answer_callback_query(cqid, text="Link sent — open on the machine running Tunde.")
+        tg.send_message_to_chat(chat_id, url)
+        return
+    tg.answer_callback_query(cqid, text="Opening report…", url=url)
 
 
 def _answer_and_generate_pdf(
@@ -215,9 +278,11 @@ def _answer_and_email(
     set_pending_report_email(chat_id, rid)
     tg.send_message_to_chat(
         chat_id,
-        "Please provide the email address (or multiple addresses separated by commas) "
-        "where you’d like to receive the report. I’ll send the PDF and a link. 📧\n"
-        "Say /cancel_email to abort.",
+        "<b>Send to email</b>\n\n"
+        "Reply with one or more addresses (comma-separated). I’ll attach the PDF when available and include a link.\n\n"
+        "<i>Built for Visionaries by Wael Safan &amp; NewFinity</i>",
+        parse_mode="HTML",
+        reply_markup_json=cancel_email_reply_markup_json(),
     )
 
 
@@ -237,7 +302,9 @@ def _answer_and_chat_mode(
     set_report_chat_context(chat_id, rid, plain)
     tg.send_message_to_chat(
         chat_id,
-        "I’m focused on this report now — ask me anything about it. Say /done when you want to go back to normal chat. 🧐",
+        "I’m focused on this report now — ask me anything about it. When you’re done, send "
+        "<b>/done</b> or open the pillar menu with <b>/start</b>. 🧐",
+        parse_mode="HTML",
     )
 
 

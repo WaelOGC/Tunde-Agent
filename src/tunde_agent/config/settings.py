@@ -144,6 +144,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TUNDE_PUBLIC_BASE_URL", "REPORT_PUBLIC_BASE_URL"),
     )
 
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    github_client_id: str = ""
+    github_client_secret: str = ""
+
     # Optional HTTP SERP APIs (rotation: Google CSE → Serper → Riley). Browser SERP is fallback.
     google_search_api_key: str = Field(
         default="",

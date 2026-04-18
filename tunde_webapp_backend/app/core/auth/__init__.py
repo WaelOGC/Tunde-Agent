@@ -1,1 +1,1 @@
-"""OAuth and identity helpers for external integrations (placeholders)."""
+"""OAuth and identity helpers for external integrations."""

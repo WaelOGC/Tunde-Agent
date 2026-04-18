@@ -1,0 +1,15 @@
+{
+  "name": "tunde-passport-reference",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Reference Passport.js config mirroring FastAPI OAuth (same env vars and callback URLs). Not used by Docker; run separately if you want an Express auth server.",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "passport": "^0.7.0",
+    "passport-github2": "^0.1.12",
+    "passport-google-oauth20": "^2.0.0"
+  }
+}

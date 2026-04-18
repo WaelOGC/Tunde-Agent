@@ -8,9 +8,19 @@ Tunde Web App Backend (Phase 1.1 baseline).
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Repo root `.env` (not cwd) so `uvicorn` picks up OAuth keys from any working directory.
+# `override=True`: otherwise an empty `GOOGLE_CLIENT_ID` in the process env blocks values from `.env`.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
+
 import os
+
+print("DEBUG GOOGLE_CLIENT_ID =", os.getenv("GOOGLE_CLIENT_ID", "EMPTY"))
+
+import sys
 import logging
 
 # Allow `py app/main.py` from within `tunde_webapp_backend/` on Windows
@@ -29,6 +39,7 @@ from tunde_webapp_backend.app.task_router import router as task_router
 from tunde_webapp_backend.app.file_router import router as file_router
 from tunde_webapp_backend.app.pages_router import api_router as pages_api_router
 from tunde_webapp_backend.app.pages_router import share_router as pages_share_router
+from tunde_webapp_backend.app.auth_router import router as auth_router
 from tunde_webapp_backend.app.db import init_db
 from tunde_webapp_backend.app.seed_agents import seed_default_agents
 
@@ -76,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(file_router)
     app.include_router(pages_api_router)
     app.include_router(pages_share_router)
+    app.include_router(auth_router)
 
     logger.info("tunde backend initialized")
     return app

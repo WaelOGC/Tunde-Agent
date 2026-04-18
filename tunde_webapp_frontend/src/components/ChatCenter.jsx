@@ -48,7 +48,7 @@ function kindLabel(kind) {
 
 /** “Preview in Canvas” — icon + label, appears after substantive assistant output */
 const PREVIEW_CANVAS_CHIP =
-  "canvas-preview-chip-in group inline-flex items-center gap-2 rounded-full border border-sky-500/40 bg-slate-900/70 px-3.5 py-2 text-[12px] font-medium text-slate-100 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-md transition-[transform,box-shadow,border-color,background-color] duration-200 hover:border-sky-400/65 hover:bg-slate-800/80 hover:shadow-[0_12px_36px_rgba(56,189,248,0.12)] disabled:cursor-not-allowed disabled:opacity-45 active:scale-[0.98]";
+  "canvas-preview-chip-in group inline-flex items-center gap-2 rounded-full border border-violet-500/35 bg-white/[0.04] px-3.5 py-2 text-[12px] font-medium text-slate-100 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-md transition-[transform,box-shadow,border-color,background-color] duration-200 hover:border-violet-400/55 hover:bg-white/[0.07] hover:shadow-[0_12px_36px_rgba(124,58,237,0.12)] disabled:cursor-not-allowed disabled:opacity-45 active:scale-[0.98]";
 
 function LayoutPreviewIcon({ className }) {
   return (
@@ -65,19 +65,59 @@ function messageHasReportContext(m) {
   return Array.isArray(m?.blocks) && m.blocks.length > 0;
 }
 
-const TOOL_ITEMS = [
-  { id: "search", label: "Search", hint: "Live web (Tavily / Serper)" },
-  { id: "analysis", label: "Analyze", hint: "CSV / TSV tables pasted in your message" },
+const TOOL_MENU_SECTIONS = [
   {
-    id: "file_analyst",
-    label: "File Analyst",
-    hint: "📊 Upload CSV, Excel, PDF, or TXT — Data Wizard in chat",
+    category: "Core Tools",
+    items: [
+      { id: "search", label: "Search", hint: "Live web research", live: true },
+      { id: "analysis", label: "Analyze", hint: "Pasted CSV / TSV tables", live: true },
+      {
+        id: "file_analyst",
+        label: "File Analyst",
+        hint: "Upload CSV, Excel, PDF, or TXT",
+        live: true,
+      },
+      { id: "vision", label: "Generate Image", hint: "Style & aspect wizard", live: true },
+    ],
   },
   {
-    id: "vision",
-    label: "Generate Image",
-    hint: "Tunde imaging — style & size wizard in chat",
+    category: "Education",
+    items: [
+      { id: "math_solver", label: "Math Solver", live: false },
+      { id: "science_agent", label: "Science Agent", live: false },
+      { id: "chemistry_agent", label: "Chemistry Agent", live: false },
+      { id: "space_agent", label: "Space Agent", live: false },
+      { id: "health_agent", label: "Health Agent", live: false },
+      { id: "study_assistant", label: "Study Assistant", live: false },
+    ],
   },
+  {
+    category: "Business",
+    items: [
+      { id: "simulation", label: "Simulation", live: false },
+      { id: "voice", label: "Voice", live: false },
+      { id: "code_assistant", label: "Code Assistant", live: false },
+      { id: "translation", label: "Translation", live: false },
+      { id: "research_agent", label: "Research Agent", live: false },
+      { id: "data_analyst", label: "Data Analyst", live: false },
+      { id: "document_writer", label: "Document Writer", live: false },
+      { id: "business_agent", label: "Business Agent", live: false },
+    ],
+  },
+  {
+    category: "Creative",
+    items: [
+      { id: "design_agent", label: "Design Agent", live: false },
+      { id: "creative_writer", label: "Creative Writer", live: false },
+    ],
+  },
+];
+
+const WELCOME_PILLS = [
+  { id: "search", label: "Search" },
+  { id: "file", label: "Analyze file" },
+  { id: "image", label: "Generate image" },
+  { id: "math", label: "Math problem" },
 ];
 
 function AssistantRichText({ text }) {
@@ -269,6 +309,21 @@ export default function ChatCenter({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const showWelcome = messages.length === 0 && !processing;
+
+  const handleWelcomePill = (pillId) => {
+    if (pillId === "search") {
+      if (!enabledTools.search) onToggleTool?.("search");
+    } else if (pillId === "file") {
+      if (!enabledTools.file_analyst) onToggleTool?.("file_analyst");
+    } else if (pillId === "image") {
+      if (!enabledTools.vision) onToggleTool?.("vision");
+    } else if (pillId === "math") {
+      setInput("Help me solve this math problem: ");
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const text = input.trim();
@@ -280,24 +335,54 @@ export default function ChatCenter({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-tunde-surface">
-      <header className="shrink-0 border-b border-slate-800/80 px-6 py-4">
-        <h1 className="truncate text-lg font-semibold text-white">{sessionTitle}</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          {connected ? "Connected to orchestrator" : "Reconnecting…"}
-        </p>
-        {enabledTools.file_analyst ? (
-          <p className="mt-2 inline-flex items-center gap-2 rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-2.5 py-1 text-[11px] font-medium text-emerald-200/95">
-            <span aria-hidden>📊</span>
-            File Analyst active — uploads & file context enabled
-            {fileAnalystContext?.fileId ? (
-              <span className="text-emerald-400/80">· file in context</span>
-            ) : null}
-          </p>
-        ) : null}
-      </header>
+      {!showWelcome ? (
+        <header className="shrink-0 border-b border-white/[0.06] px-4 py-2.5 md:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-medium text-slate-200">{sessionTitle}</h1>
+              <p className="mt-0.5 text-[11px] text-slate-600">
+                {connected ? "Ready" : "Reconnecting…"}
+              </p>
+            </div>
+          </div>
+          {enabledTools.file_analyst ? (
+            <p className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-1 text-[10px] font-medium text-emerald-400/90">
+              <span aria-hidden>📊</span>
+              File Analyst
+              {fileAnalystContext?.fileId ? <span className="text-emerald-500/70">· file attached</span> : null}
+            </p>
+          ) : null}
+        </header>
+      ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:px-4">
-        <div className="mx-auto flex w-full max-w-none flex-col gap-5">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {showWelcome ? (
+          <div className="flex min-h-full flex-col items-center justify-center px-6 py-10">
+            <div className="max-w-lg text-center">
+              <h2 className="text-[1.65rem] font-semibold tracking-tight text-white md:text-3xl">
+                Hello, how can I help?
+              </h2>
+              <p className="mt-3 text-sm leading-relaxed text-slate-500">
+                Ask me anything — I&apos;ll assign the right agents to your task.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                {WELCOME_PILLS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleWelcomePill(p.id)}
+                    disabled={!connected}
+                    className="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-[13px] font-medium text-slate-300 transition-colors hover:border-violet-500/35 hover:bg-violet-500/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="px-2 py-3 sm:px-4">
+            <div className="mx-auto flex w-full max-w-none flex-col gap-5">
           {messages.map((m) => {
             const isUser = m.role === "user";
             return (
@@ -311,16 +396,16 @@ export default function ChatCenter({
                   label={isUser ? "U" : "T"}
                   className={
                     isUser
-                      ? "bg-tunde-accent text-white"
-                      : "bg-slate-700 text-slate-200 ring-1 ring-slate-600"
+                      ? "bg-gradient-to-br from-violet-500 to-purple-700 text-white shadow-sm shadow-violet-950/40"
+                      : "bg-white/[0.08] text-slate-200 ring-1 ring-white/[0.08]"
                   }
                 />
                 <div
                   className={[
                     "min-w-0 rounded-2xl py-3 text-sm leading-relaxed shadow-sm",
                     isUser
-                      ? "max-w-[min(85%,42rem)] shrink-0 rounded-tr-sm bg-tunde-accent px-4 text-white"
-                      : "w-full max-w-none flex-1 rounded-tl-sm border border-slate-800/80 bg-slate-900/50 px-3 text-slate-100 sm:px-4",
+                      ? "max-w-[min(85%,42rem)] shrink-0 rounded-tr-sm bg-gradient-to-br from-violet-600 to-purple-800 px-4 text-white shadow-sm shadow-black/20"
+                      : "w-full max-w-none flex-1 rounded-tl-sm border border-white/[0.06] bg-white/[0.03] px-3 text-slate-100 sm:px-4",
                   ].join(" ")}
                 >
                   {isUser ? m.text : <AssistantRichText text={m.text} />}
@@ -339,7 +424,7 @@ export default function ChatCenter({
                         className={PREVIEW_CANVAS_CHIP}
                         title="Open the Tunde Canvas and build a shareable report from this answer"
                       >
-                        <LayoutPreviewIcon className="h-4 w-4 text-sky-400 transition-transform duration-200 group-hover:scale-110" />
+                        <LayoutPreviewIcon className="h-4 w-4 text-violet-400 transition-transform duration-200 group-hover:scale-110" />
                         Preview in Canvas
                       </button>
                     </div>
@@ -362,9 +447,9 @@ export default function ChatCenter({
           />
           {processing && (
             <div className="flex w-full min-w-0 gap-3">
-              <Avatar label="T" className="bg-slate-700 text-slate-200 ring-1 ring-slate-600" />
+              <Avatar label="T" className="bg-white/[0.08] text-slate-200 ring-1 ring-white/[0.08]" />
               <div className="min-w-0 flex-1 space-y-3">
-                <div className="rounded-2xl rounded-tl-sm border border-slate-800/80 bg-slate-900/50 px-3 py-3 sm:px-4">
+                <div className="rounded-2xl rounded-tl-sm border border-white/[0.06] bg-white/[0.03] px-3 py-3 sm:px-4">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
                     Thinking
                   </p>
@@ -379,7 +464,7 @@ export default function ChatCenter({
                     <span className="h-2 w-2 animate-bounce rounded-full bg-slate-500" />
                   </div>
                   <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-slate-800/90">
-                    <div className="thinking-shimmer h-full w-1/2 rounded-full bg-gradient-to-r from-transparent via-tunde-accent/35 to-transparent" />
+                    <div className="thinking-shimmer h-full w-1/2 rounded-full bg-gradient-to-r from-transparent via-violet-500/35 to-transparent" />
                   </div>
                 </div>
                 {pendingInfographic ? <CanvasImagePending /> : null}
@@ -387,17 +472,18 @@ export default function ChatCenter({
             </div>
           )}
           <div ref={bottomRef} />
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="shrink-0 border-t border-slate-800/80 bg-tunde-surface/95 px-4 py-4 backdrop-blur-sm sm:px-8">
+      <div className="shrink-0 border-t border-white/[0.06] bg-tunde-surface/95 px-4 py-3 backdrop-blur-md sm:px-6">
         <form onSubmit={handleSubmit} className="mx-auto w-full max-w-3xl">
           <div
             className={[
-              "relative flex w-full items-end gap-2 rounded-2xl border border-slate-700/75 bg-slate-900/50 px-2 py-2",
-              "shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_4px_24px_rgba(0,0,0,0.25)] backdrop-blur-md",
-              "ring-1 ring-white/[0.07] transition-[box-shadow,border-color] duration-200 ease-out",
-              "focus-within:border-tunde-accent/50 focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.2),0_8px_32px_rgba(0,0,0,0.35)] focus-within:ring-tunde-accent/35",
+              "relative flex w-full items-end gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2 py-1.5",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-[box-shadow,border-color] duration-200 ease-out",
+              "focus-within:border-violet-500/40 focus-within:shadow-[0_0_0_3px_rgba(124,58,237,0.15)]",
             ].join(" ")}
           >
             <div className="relative flex shrink-0 items-end gap-0.5 self-end pb-1 pl-1" ref={toolsRef}>
@@ -412,7 +498,7 @@ export default function ChatCenter({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!enabledTools.file_analyst || processing || !connected || fileBusy}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-800/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-35"
                 title={enabledTools.file_analyst ? "Upload file (File Analyst)" : "Turn on File Analyst in + menu"}
                 aria-label="Upload file for File Analyst"
               >
@@ -423,33 +509,57 @@ export default function ChatCenter({
               <button
                 type="button"
                 onClick={() => setToolsOpen((o) => !o)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-800/90 hover:text-white"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-white"
                 title="Tools"
                 aria-expanded={toolsOpen}
               >
-                <span className="text-lg font-light leading-none">+</span>
+                <span className="text-xl font-light leading-none">+</span>
               </button>
               {toolsOpen && (
-                <div className="absolute bottom-full left-0 z-20 mb-2 w-64 overflow-hidden rounded-xl border border-slate-800 bg-tunde-bg py-2 shadow-xl">
-                  <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Active tools
-                  </p>
-                  {TOOL_ITEMS.map((item) => (
-                    <label
-                      key={item.id}
-                      className="flex cursor-pointer items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-slate-800/80"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-3.5 w-3.5 rounded border-slate-600 bg-slate-900 text-tunde-accent focus:ring-tunde-accent"
-                        checked={Boolean(enabledTools[item.id])}
-                        onChange={() => onToggleTool?.(item.id)}
-                      />
-                      <span>
-                        <span className="block text-sm text-slate-200">{item.label}</span>
-                        <span className="block text-[11px] text-slate-500">{item.hint}</span>
-                      </span>
-                    </label>
+                <div className="absolute bottom-full left-0 z-20 mb-2 max-h-[min(70vh,28rem)] w-[min(calc(100vw-1.5rem),20rem)] overflow-y-auto overflow-x-hidden rounded-xl border border-white/[0.08] bg-tunde-bg py-2 shadow-2xl shadow-black/40">
+                  {TOOL_MENU_SECTIONS.map((section) => (
+                    <div key={section.category} className="border-b border-white/[0.04] pb-2 last:border-b-0 last:pb-0">
+                      <p className="sticky top-0 z-10 bg-tunde-bg px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+                        {section.category}
+                      </p>
+                      {section.items.map((item) =>
+                        item.live ? (
+                          <label
+                            key={item.id}
+                            className="flex cursor-pointer items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-3.5 w-3.5 rounded border-slate-600 bg-slate-900/80 text-tunde-accent focus:ring-tunde-accent"
+                              checked={Boolean(enabledTools[item.id])}
+                              onChange={() => onToggleTool?.(item.id)}
+                            />
+                            <span>
+                              <span className="block text-[13px] text-slate-200">{item.label}</span>
+                              <span className="block text-[11px] text-slate-500">{item.hint}</span>
+                            </span>
+                          </label>
+                        ) : (
+                          <div
+                            key={item.id}
+                            className="flex cursor-not-allowed items-start gap-2 px-3 py-2 text-left opacity-50"
+                          >
+                            <span
+                              className="mt-1 h-3.5 w-3.5 shrink-0 rounded border border-slate-700/80 bg-slate-900/50"
+                              aria-hidden
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="text-[13px] text-slate-400">{item.label}</span>
+                                <span className="rounded bg-slate-800/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Coming soon
+                                </span>
+                              </span>
+                            </span>
+                          </div>
+                        )
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -479,15 +589,15 @@ export default function ChatCenter({
             <button
               type="submit"
               disabled={!connected || processing || !input.trim()}
-              className="absolute bottom-2 right-2 z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-tunde-accent text-white shadow-md ring-1 ring-white/10 transition-[opacity,transform] hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="absolute bottom-2 right-2 z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-tunde-accent text-white shadow-md shadow-violet-950/30 transition-[opacity,transform] hover:bg-tunde-accentHover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               title="Send (Enter)"
               aria-label="Send message"
             >
               <SendIcon className="h-4 w-4" />
             </button>
           </div>
-          <p className="mt-3 text-center text-[11px] text-slate-600">
-            Enter to send · Shift+Enter new line · Search, File Analyst uploads, & Tunde imaging
+          <p className="mt-2 text-center text-[10px] text-slate-600">
+            Enter to send · Shift+Enter for new line
           </p>
         </form>
       </div>

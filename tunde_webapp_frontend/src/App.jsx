@@ -4,6 +4,7 @@ import LandingCanvasPanel from "./components/LandingCanvasPanel";
 import ProcessStepper from "./components/ProcessStepper";
 import SettingsPanel from "./components/SettingsPanel";
 import WorkspaceSidebar from "./components/WorkspaceSidebar";
+import TundeHub from "./components/TundeHub";
 import { getMockSession } from "./state/mockSession";
 import { useTundeSocket } from "./state/useTundeSocket";
 
@@ -160,6 +161,7 @@ export function App() {
   const [view, setView] = useState("chat");
   const [mobileActivityOpen, setMobileActivityOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [tundeHubOpen, setTundeHubOpen] = useState(false);
 
   const [processing, setProcessing] = useState(false);
   const [currentRun, setCurrentRun] = useState(null);
@@ -1029,6 +1031,10 @@ export function App() {
             newChat();
             setMobileNavOpen(false);
           }}
+          onOpenTundeHub={() => {
+            setTundeHubOpen(true);
+            setMobileNavOpen(false);
+          }}
           onOpenSettings={() => {
             setView("settings");
             setMobileNavOpen(false);
@@ -1038,14 +1044,21 @@ export function App() {
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-tunde-surface md:pl-0">
-        <header className="flex shrink-0 items-center gap-3 border-b border-slate-800/80 bg-tunde-surface px-3 py-2.5 md:hidden">
+        <header className="flex shrink-0 items-center gap-3 border-b border-white/[0.06] bg-tunde-surface px-3 py-2.5 md:hidden">
           <button
             type="button"
-            className="rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5 text-sm text-slate-200"
+            className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm text-slate-200"
             onClick={() => setMobileNavOpen(true)}
             aria-label="Open menu"
           >
             Menu
+          </button>
+          <button
+            type="button"
+            className="shrink-0 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-sm font-semibold text-violet-200"
+            onClick={() => setTundeHubOpen(true)}
+          >
+            Hub
           </button>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-white">{sessionTitle}</p>
@@ -1144,6 +1157,12 @@ export function App() {
       >
         Process
       </button>
+
+      <TundeHub
+        open={tundeHubOpen}
+        onClose={() => setTundeHubOpen(false)}
+        apiBase={backendHttpBase().replace(/\/$/, "")}
+      />
     </div>
   );
 }

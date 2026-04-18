@@ -67,3 +67,21 @@ This `docs/` tree is organized for team collaboration and long-term scale. **All
 
 - [Tunde App Ecosystem design (Google & GitHub)](./04_integrations/apps_ecosystem_design.md)
 
+---
+
+## 09 — Tunde Hub
+
+- [Tunde Hub overview](./06_tunde_hub/overview.md)
+
+---
+
+## 10 — Tools
+
+- [Tools overview](./08_tools/overview.md)
+
+---
+
+## 11 — Agent Army
+
+- [Agent Army overview](./07_agent_army/overview.md)
+

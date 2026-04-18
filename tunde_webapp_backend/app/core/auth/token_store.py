@@ -13,6 +13,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from sqlalchemy import delete, select
 
@@ -128,3 +129,39 @@ def delete_tokens(user_id: str, provider: str) -> None:
                 UserIntegration.provider == provider,
             )
         )
+
+
+IntegrationConnectionStatus = Literal["disconnected", "connected", "error"]
+
+
+def integration_row_status(user_id: str, provider: str) -> IntegrationConnectionStatus:
+    """
+    Lightweight connection state for Hub UI (no provider API calls).
+
+    - ``disconnected``: no row for this user+provider
+    - ``connected``: row exists, access token not past ``token_expires_at``, ciphertext decrypts
+    - ``error``: expired window, corrupt ciphertext, or empty token payload
+    """
+    ensure_table()
+    now = datetime.now(timezone.utc)
+    with db_session() as session:
+        row = session.execute(
+            select(UserIntegration).where(
+                UserIntegration.user_id == user_id,
+                UserIntegration.provider == provider,
+            )
+        ).scalar_one_or_none()
+    if row is None:
+        return "disconnected"
+    try:
+        data = _decrypt(row.encrypted_access_token)
+        if not isinstance(data, dict) or not data:
+            return "error"
+    except Exception:
+        return "error"
+    if row.token_expires_at is not None and row.token_expires_at < now:
+        refresh = data.get("refresh_token")
+        if refresh:
+            return "connected"
+        return "error"
+    return "connected"

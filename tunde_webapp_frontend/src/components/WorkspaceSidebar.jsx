@@ -19,39 +19,42 @@ export default function WorkspaceSidebar({
   onSelectSession,
   onNewChat,
   onOpenSettings,
+  onOpenTundeHub,
   connected,
 }) {
   const [hoverId, setHoverId] = useState(null);
 
   return (
-    <aside className="flex h-full w-[260px] shrink-0 flex-col border-r border-slate-800/80 bg-tunde-bg">
-      <div className="shrink-0 border-b border-slate-800/80 px-4 py-4">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold tracking-tight text-white">Tunde</span>
-              <span className="rounded-md bg-slate-800/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                v0.1.0
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">Workspace</p>
+    <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-white/[0.06] bg-tunde-bg">
+      <div className="shrink-0 px-3 pt-4 pb-3">
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-700 text-sm font-bold text-white shadow-md shadow-violet-950/50"
+            aria-hidden
+          >
+            T
           </div>
-          {onNewChat ? (
-            <button
-              type="button"
-              onClick={onNewChat}
-              className="shrink-0 rounded-lg bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 transition-colors hover:bg-tunde-accent hover:text-white"
-            >
-              New
-            </button>
-          ) : null}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-semibold tracking-tight text-white">Tunde</p>
+            <p className="truncate text-[11px] text-slate-500">Workspace</p>
+          </div>
         </div>
+        {onNewChat ? (
+          <button
+            type="button"
+            onClick={onNewChat}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] py-2.5 text-[13px] font-medium text-slate-200 transition-colors hover:border-white/[0.12] hover:bg-white/[0.07] hover:text-white"
+          >
+            <span className="text-lg font-light leading-none text-slate-400" aria-hidden>
+              +
+            </span>
+            New chat
+          </button>
+        ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-        <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-          Recent sessions
-        </p>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <p className="px-2 pb-1.5 text-[11px] font-medium text-slate-600">Recent</p>
         <ul className="space-y-0.5">
           {sessions.map((s) => {
             const active = s.id === activeSessionId;
@@ -64,16 +67,16 @@ export default function WorkspaceSidebar({
                   onMouseEnter={() => setHoverId(s.id)}
                   onMouseLeave={() => setHoverId(null)}
                   className={[
-                    "flex w-full flex-col rounded-lg px-3 py-2.5 text-left transition-colors",
+                    "flex w-full flex-col rounded-md px-2.5 py-2 text-left transition-colors",
                     active
-                      ? "bg-slate-800/90 text-white ring-1 ring-tunde-accent/40"
+                      ? "bg-white/[0.08] text-white"
                       : hovered
-                        ? "bg-slate-800/50 text-slate-100"
-                        : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200",
+                        ? "bg-white/[0.04] text-slate-200"
+                        : "text-slate-500 hover:bg-white/[0.03] hover:text-slate-300",
                   ].join(" ")}
                 >
-                  <span className="truncate text-sm font-medium">{s.title}</span>
-                  <span className="truncate text-[11px] text-slate-500">{s.preview}</span>
+                  <span className="truncate text-[13px] font-medium leading-snug">{s.title}</span>
+                  <span className="truncate text-[11px] text-slate-600">{s.preview}</span>
                 </button>
               </li>
             );
@@ -81,28 +84,36 @@ export default function WorkspaceSidebar({
         </ul>
       </div>
 
-      <div className="shrink-0 border-t border-slate-800/80 px-3 py-3">
+      <div className="shrink-0 space-y-2 border-t border-white/[0.06] px-3 py-3">
+        {onOpenTundeHub ? (
+          <button
+            type="button"
+            onClick={onOpenTundeHub}
+            className="flex w-full items-center justify-center rounded-lg bg-tunde-accent py-2.5 text-[13px] font-semibold text-white shadow-sm shadow-violet-950/40 transition-colors hover:bg-tunde-accentHover"
+          >
+            Tunde Hub
+          </button>
+        ) : null}
+
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={onOpenSettings}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-800/80 hover:text-white"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-slate-200"
             title="Settings"
             aria-label="Open settings"
           >
-            <GearIcon className="h-5 w-5" />
+            <GearIcon className="h-[18px] w-[18px]" />
           </button>
-          <div className="flex items-center gap-2 rounded-lg bg-slate-900/60 px-2.5 py-1.5">
+          <div className="flex items-center gap-2 rounded-md px-2 py-1 text-[11px] text-slate-500">
             <span
               className={[
-                "h-2 w-2 shrink-0 rounded-full",
-                connected ? "bg-tunde-success shadow-[0_0_8px_rgba(16,185,129,0.6)]" : "bg-red-500",
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                connected ? "bg-tunde-success" : "bg-red-500/90",
               ].join(" ")}
               title={connected ? "Connected" : "Disconnected"}
             />
-            <span className="text-[11px] font-medium text-slate-400">
-              {connected ? "Live" : "Offline"}
-            </span>
+            <span>{connected ? "Live" : "Offline"}</span>
           </div>
         </div>
       </div>

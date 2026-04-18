@@ -5,9 +5,10 @@ export default {
     extend: {
       colors: {
         tunde: {
-          bg: "#0c0e12",
-          surface: "#14161c",
-          accent: "#3b82f6",
+          bg: "#0c0c0f",
+          surface: "#131316",
+          accent: "#7c3aed",
+          accentHover: "#6d28d9",
           success: "#10b981",
         },
       },

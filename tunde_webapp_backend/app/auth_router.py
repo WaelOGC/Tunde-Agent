@@ -22,7 +22,11 @@ from tunde_webapp_backend.app.core.auth.oauth_config import (
     get_failure_redirect,
     get_success_redirect,
 )
-from tunde_webapp_backend.app.core.auth.token_store import delete_tokens, save_tokens
+from tunde_webapp_backend.app.core.auth.token_store import (
+    delete_tokens,
+    integration_row_status,
+    save_tokens,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["oauth"])
@@ -34,6 +38,27 @@ _pending_states: dict[str, str] = {}
 # For now, we use a fixed dev user ID until proper web auth is wired up.
 # Replace with the real authenticated user_id from your session/JWT later.
 _DEV_USER_ID = "dev_user"
+
+
+@router.get("/status")
+def auth_status():
+    """
+    Return Hub integration connection states for the current user.
+
+    Google Drive, Gmail, and Calendar share one Google OAuth row (``provider=google``).
+    """
+    uid = _DEV_USER_ID
+    google_state = integration_row_status(uid, "google")
+    github_state = integration_row_status(uid, "github")
+    return {
+        "user_id": uid,
+        "integrations": {
+            "google_drive": {"status": google_state},
+            "gmail": {"status": google_state},
+            "google_calendar": {"status": google_state},
+            "github": {"status": github_state},
+        },
+    }
 
 
 # ── Google ──────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from tunde_agent.services.telegram_post_task_markup import post_task_reply_markup_json
+from telegram_agent_core.services.telegram_post_task_markup import post_task_reply_markup_json
 
 
 def test_post_task_callback_data_under_64_bytes() -> None:

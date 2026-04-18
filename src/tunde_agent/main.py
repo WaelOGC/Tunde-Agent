@@ -8,8 +8,10 @@ import uuid
 from contextlib import asynccontextmanager
 
 import threading
+import os
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from tunde_agent import __version__
@@ -43,7 +45,7 @@ async def _lifespan(app: FastAPI):
     else:
         print("DEBUG: Token found. Starting Poller thread...", flush=True)
         poller_stop = threading.Event()
-        from tunde_agent.services.telegram_poller import start_telegram_poller_thread
+        from telegram_agent_core.services.telegram_poller import start_telegram_poller_thread
 
         poller_thread = start_telegram_poller_thread(poller_stop)
 
@@ -67,6 +69,37 @@ app = FastAPI(
     summary=TUNDE_PERSONA.role_summary,
     lifespan=_lifespan,
 )
+
+# --- Web / Dashboard integrations (Vite SPA + WebSocket) ---
+# The web UI lives in `tunde_webapp_frontend/` (Vite dev server default: http://localhost:5173).
+# Allow local dev origins; configure via TUNDE_CORS_ORIGINS when needed.
+cors_env = (os.getenv("TUNDE_CORS_ORIGINS") or "").strip()
+default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+allow_origins = [o.strip() for o in cors_env.split(",") if o.strip()] if cors_env else default_origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount the webapp transport endpoints on the primary API app so the dashboard can connect
+# even when running `uvicorn tunde_agent.main:app --reload`.
+try:
+    from tunde_webapp_backend.app.ws_router import router as tunde_ws_router
+    from tunde_webapp_backend.app.task_router import router as tunde_task_router
+
+    app.include_router(tunde_ws_router)
+    app.include_router(tunde_task_router)
+except Exception as exc:  # pragma: no cover
+    # Keep core API functional if optional webapp module deps are missing.
+    logger.warning("Webapp routers not mounted: %s", str(exc)[:200])
 
 app.include_router(mission_router)
 app.include_router(report_router)

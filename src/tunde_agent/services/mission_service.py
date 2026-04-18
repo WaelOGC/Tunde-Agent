@@ -22,14 +22,14 @@ from tunde_agent.domain.approval_gate import request_human_approval
 from tunde_agent.models.audit_log import AuditLog
 from tunde_agent.multi_agent.agents.uiux_agent import UIUXAgent
 from tunde_agent.services.llm_service import LLMError
-from tunde_agent.services.telegram_markdown_v2 import (
+from telegram_agent_core.services.telegram_markdown_v2 import (
     format_approval_photo_caption,
     telegram_inline_keyboard_url_allowed,
     tunde_sign_off_html,
 )
-from tunde_agent.services.telegram_post_task_markup import post_task_reply_markup_json
-from tunde_agent.services.telegram_report_history import record_report_delivered
-from tunde_agent.services.telegram_service import TelegramService
+from telegram_agent_core.services.telegram_post_task_markup import post_task_reply_markup_json
+from telegram_agent_core.services.telegram_report_history import record_report_delivered
+from telegram_agent_core.services.telegram_service import TelegramService
 from tunde_agent.tools.browser.exceptions import CaptchaHandoffRequired
 from tunde_agent.tools.browser.research_tool import research_browse
 

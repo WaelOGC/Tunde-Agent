@@ -66,7 +66,7 @@ class NotificationService:
         screenshot_png: bytes | None,
     ) -> None:
         from tunde_agent.config.settings import get_settings
-        from tunde_agent.services.telegram_service import TelegramService
+        from telegram_agent_core.services.telegram_service import TelegramService
 
         svc = TelegramService(get_settings())
         if not svc.token:

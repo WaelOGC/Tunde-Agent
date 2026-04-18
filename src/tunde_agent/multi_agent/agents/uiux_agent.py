@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from tunde_agent.services.telegram_markdown_v2 import format_telegram_mission_teaser_html
+from telegram_agent_core.services.telegram_markdown_v2 import format_telegram_mission_teaser_html
 
 
 class UIUXAgent:

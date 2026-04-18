@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml README.md alembic.ini ./
 COPY src ./src
+COPY tunde_webapp_backend ./tunde_webapp_backend
 COPY docs ./docs
 COPY alembic ./alembic
 

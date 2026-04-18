@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from tunde_agent.services.telegram_ux_menus import (
+from telegram_agent_core.services.telegram_ux_menus import (
     cancel_email_reply_markup_json,
     cancel_landing_reply_markup_json,
     main_menu_reply_markup_json,

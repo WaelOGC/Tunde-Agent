@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from tunde_agent.services.mission_service import _build_report_page_url, _resolve_report_public_base
-from tunde_agent.services.telegram_markdown_v2 import (
+from telegram_agent_core.services.telegram_markdown_v2 import (
     TEASER_REPORT_CTA_LABEL,
     format_telegram_mission_teaser_html,
     telegram_inline_keyboard_url_allowed,

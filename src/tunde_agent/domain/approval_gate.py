@@ -13,7 +13,7 @@ import uuid
 from tunde_agent.config.settings import get_settings
 from tunde_agent.db.session import db_session
 from tunde_agent.models.approval_request import ApprovalRequest
-from tunde_agent.services.telegram_service import TelegramService
+from telegram_agent_core.services.telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 

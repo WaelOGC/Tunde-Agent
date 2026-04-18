@@ -10,7 +10,7 @@ pytest.importorskip("PIL")
 
 from PIL import Image
 
-from tunde_agent.services.telegram_photo_util import prepare_png_for_telegram_photo
+from telegram_agent_core.services.telegram_photo_util import prepare_png_for_telegram_photo
 
 
 def test_letterbox_tiny_image_to_standard_canvas() -> None:

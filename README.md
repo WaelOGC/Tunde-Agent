@@ -1,6 +1,6 @@
 # Tunde Agent
 
-Personal AI agent stack: **Python**, **FastAPI**, **Playwright**, **PostgreSQL**. Documentation lives in [`docs/`](docs/). Research missions: report language and search locales (`TUNDE_RESEARCH_*` in `.env`) are explained in [`docs/research_language_and_search_locales.md`](docs/research_language_and_search_locales.md).
+Personal AI agent stack: **Python**, **FastAPI**, **Playwright**, **PostgreSQL**. Documentation lives in [`docs/`](docs/). Research missions: report language and search locales (`TUNDE_RESEARCH_*` in `.env`) are explained in [`docs/02_web_app_backend/research_language_and_search_locales.md`](docs/02_web_app_backend/research_language_and_search_locales.md).
 
 ## Quick start (Docker)
 
@@ -15,6 +15,21 @@ docker compose up --build
 - **PostgreSQL (from your machine):** `localhost:5433` → container port 5432 (avoids conflict with a local Postgres on 5432). User/password/db: `tunde` / `tunde` / `tunde`. Set `POSTGRES_PUBLISH_PORT` in `.env` if 5433 is taken.
 
 Copy [`.env.example`](.env.example) to `.env` for local non-Docker runs.
+
+## How to use (Telegram — button-driven)
+
+1. Open your bot in Telegram and press **Start**.
+2. You will see a **Main Menu** with 5 pillars:
+   - 🏢 Business & Market Intelligence
+   - 🔬 Engineering & Technical Design
+   - 🎨 Creative Media Studio
+   - 🎬 Pro Video Generation
+   - 🌐 Web & Landing Solutions
+3. Tap a pillar → tap an option → Tunde will ask a clear **next prompt** (topic/brief/scene).
+4. Navigation keeps the chat clean: menus **edit in place** as you move between screens.
+5. After deep research reports are delivered, use the **buttons on the report message** (PDF export, landing page, email, summarize, compare, etc.).
+
+Built for Visionaries by Wael Safan & NewFinity
 
 **Database roles:** The API must connect as `tunde_app` (non-superuser) so **RLS** applies. Use `ALEMBIC_DATABASE_URL` with the `tunde` superuser when running **Alembic** (migrations). Docker Compose sets both automatically and runs `alembic upgrade head` before Uvicorn.
 
@@ -34,19 +49,23 @@ uvicorn tunde_agent.main:app --reload
 
 Ensure PostgreSQL is running and `DATABASE_URL` matches your instance.
 
-## How to use (Telegram)
+## Web dashboard (operator workspace)
 
-With the bot running and `TELEGRAM_TOKEN` set, open your bot in Telegram:
+The repo includes a **Vite + React** UI (`tunde_webapp_frontend/`) and a **FastAPI** web backend (`tunde_webapp_backend/`) for chat, tools, and canvas-style outputs. This stack is **separate** from `uvicorn tunde_agent.main:app` (default port **8000**); the web backend defaults to **`TUNDE_WEBAPP_PORT=8001`**.
 
-1. Send **`/start`** — you get a **short welcome** (no long command list) and a **pillar menu** (Business, Engineering, Creative, Video, Web, About).
-2. Tap a pillar, then a track. The bot **edits the same message** as you navigate so the chat stays tidy.
-3. When asked for a topic or image brief, **send your next message as plain text**.
-4. **Photo edits:** send a **photo** with a **caption** describing the change (e.g. new background), *or* send the photo first, then a short text instruction. **Creative → 📷 Edit my photo** opens the same flow. Cancel a two-step edit with **`/cancel_photo_edit`**. Requires `GEMINI_API_KEY` and `GEMINI_IMAGE_MODEL`.
-5. **Video (Veo):** **Pro Video Generation → 10 / 20 / 30** — tap a duration tier, then send your **scene description** as the next message. Renders are async (often minutes); the bot delivers an MP4. Cancel a waiting tier with **`/cancel_video`**. Set `GEMINI_VIDEO_MODEL` (see `.env.example`); optional `TUNDE_VEO_*` tuning in [docs/media_standards.md](docs/media_standards.md).
-6. After a **deep research** report appears, use the **inline row on that message** for view, landing page, **📥 Export to PDF**, Word, CSV, email, and more. Cancels for email or custom landing use **buttons** on the instruction messages.
+**Features:** Search / Analyze / **File Analyst** (upload CSV, XLSX, PDF, TXT with TTL storage), **Generate Image** (style & aspect wizard + `image_generation` payload), **Report landing pages** (contextual **Canvas 🖼️** → generate HTML + Tailwind, side preview, **`POST /api/pages/publish`**, public **`GET /share/{id}`**).
 
-Details: [`docs/ux_framework.md`](docs/ux_framework.md) and [`docs/media_standards.md`](docs/media_standards.md).
+**Documentation:** [`docs/03_web_app_frontend/workspace_tools_and_landing.md`](docs/03_web_app_frontend/workspace_tools_and_landing.md) (workflows, env vars, file paths). Dashboard UX direction: [`docs/03_web_app_frontend/dashboard_spec.md`](docs/03_web_app_frontend/dashboard_spec.md).
+
+Local dev (typical):
+
+```bash
+cd tunde_webapp_backend && py -m uvicorn tunde_webapp_backend.app.main:app --host 127.0.0.1 --port 8001 --reload
+cd tunde_webapp_frontend && npm install && npm run dev
+```
+
+Set `VITE_BACKEND_HTTP_BASE` if the API is not on `http://localhost:8001`. For production-style share links, set **`TUNDE_PUBLIC_SHARE_BASE`** (e.g. `https://tunde.ai`) — see [`.env.example`](.env.example).
 
 ## Project layout
 
-See the scaffold under `src/tunde_agent/` (`api`, `config`, `db`, `models`, `domain`, `services`, `tools`) and [`docs/architecture.md`](docs/architecture.md). Multi-agent orchestration and Gemini vs DeepSeek routing: [`docs/multi_agent.md`](docs/multi_agent.md).
+See the scaffold under `src/tunde_agent/` (`api`, `config`, `db`, `models`, `domain`, `services`, `tools`) and [`docs/02_web_app_backend/architecture.md`](docs/02_web_app_backend/architecture.md). Multi-agent orchestration and routing: [`docs/02_web_app_backend/multi_agent.md`](docs/02_web_app_backend/multi_agent.md). Web workspace details: [`docs/03_web_app_frontend/workspace_tools_and_landing.md`](docs/03_web_app_frontend/workspace_tools_and_landing.md).

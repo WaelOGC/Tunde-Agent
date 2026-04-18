@@ -211,7 +211,7 @@ def generate_video_mp4_for_preset(
     - **20**: 8s base + **two** 720p extensions → about **22s** total.
     - **30**: 8s base + **three** extensions → about **29s** total.
 
-    Button labels are product tiers; exact seconds follow Google’s Veo limits (see ``docs/media_standards.md``).
+    Button labels are product tiers; exact seconds follow vendor limits (see ``docs/01_telegram_bot/media_standards.md``).
     """
     base_prompt = (user_prompt or "").strip()
     if not base_prompt:

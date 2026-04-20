@@ -33,6 +33,68 @@ function extractSectionHeadingLabel(chunk) {
   return "";
 }
 
+/** Normalize for comparing document title to first-line ATX heading (collapse whitespace). */
+function normalizeHeadingTitle(s) {
+  return String(s ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+/**
+ * Remove the first line when it repeats the card title as an ATX heading (title is already in the chrome).
+ * Keeps copy/download consistent with the rendered body.
+ */
+function stripLeadingDuplicateDocTitle(rawContent, docTitle) {
+  const tNorm = normalizeHeadingTitle(docTitle);
+  if (!tNorm) return rawContent;
+  let s = String(rawContent ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = s.split("\n");
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === "") i += 1;
+  if (i >= lines.length) return rawContent;
+  const hm = lines[i].trim().match(/^#{1,6}\s*(.+)$/);
+  if (!hm) return rawContent;
+  const headingNorm = normalizeHeadingTitle(hm[1]);
+  if (headingNorm !== tNorm) return rawContent;
+  const rest = lines.slice(i + 1).join("\n").replace(/^\s*/, "");
+  return rest;
+}
+
+/** First ATX line only — used when merging duplicate-heading chunks. */
+function stripLeadingAtxLine(text) {
+  return String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/^#{1,6}\s*[^\n\r]*(?:\n|$)/, "")
+    .trimStart();
+}
+
+/**
+ * Models sometimes emit the same section heading twice in a row (e.g. two "## Conclusion" blocks).
+ * That produced two tabs with the same label. Merge into one chunk so the nav matches the doc.
+ */
+function mergeAdjacentDuplicateHeadingParts(partList) {
+  if (partList.length <= 1) return partList;
+  const out = [];
+  for (const chunk of partList) {
+    const lab = extractSectionHeadingLabel(chunk);
+    const prev = out[out.length - 1];
+    const prevLab = prev != null ? extractSectionHeadingLabel(prev) : "";
+    if (
+      prev != null &&
+      lab &&
+      prevLab &&
+      normalizeHeadingTitle(lab) === normalizeHeadingTitle(prevLab)
+    ) {
+      const tail = stripLeadingAtxLine(chunk);
+      out[out.length - 1] = tail ? `${prev}\n\n${tail}`.trim() : prev;
+    } else {
+      out.push(chunk);
+    }
+  }
+  return out;
+}
+
 function SendIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -187,16 +249,88 @@ function formatDocumentTypeLabel(raw) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function renderDocumentChunkMarkdown(chunk) {
+/** Strip stray markdown markers from table cells for plain display. */
+function documentWriterTableCellText(v) {
+  return String(v ?? "")
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .trim();
+}
+
+/**
+ * GitHub-style Markdown pipe tables rendered as semantic HTML with Document Writer dark styling.
+ */
+function DocumentWriterMarkdownTable({ headers, rows }) {
+  const hdrs = Array.isArray(headers) ? headers.map(documentWriterTableCellText) : [];
+  const bodyRows = Array.isArray(rows)
+    ? rows.map((r) => (Array.isArray(r) ? r.map(documentWriterTableCellText) : []))
+    : [];
+  if (hdrs.length === 0) return null;
+
+  return (
+    <div className="my-4 overflow-hidden rounded-xl border border-white/[0.1] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <table className="w-full border-collapse text-left text-[14px] leading-snug text-white">
+        <thead>
+          <tr style={{ backgroundColor: "#7c3aed" }}>
+            {hdrs.map((h, hi) => (
+              <th
+                key={`dw-th-${hi}`}
+                className="border border-white/[0.1] px-3 py-2.5 font-semibold tracking-tight text-white"
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bodyRows.map((row, ri) => (
+            <tr
+              key={`dw-tr-${ri}`}
+              className={
+                ri % 2 === 0
+                  ? "bg-[rgb(15_23_42_/0.92)] text-slate-50"
+                  : "bg-[rgb(15_23_42_/0.72)] text-slate-50"
+              }
+            >
+              {hdrs.map((_, ci) => (
+                <td key={`dw-td-${ri}-${ci}`} className="border border-white/[0.1] px-3 py-2 align-top">
+                  {row[ci] ?? ""}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * Split markdown into segments (pipe tables vs prose). Paragraph boundaries help the table
+ * detector when the model separates blocks with blank lines.
+ */
+function segmentDocumentWriterMarkdown(chunk) {
   const prepared = prepareAssistantMarkdown(chunk || "");
-  const segments = segmentMarkdownPipeTables(prepared);
+  if (!prepared.trim()) return [{ type: "text", text: "" }];
+  const blocks = prepared.split(/\n\n+/);
+  const segments = [];
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    segments.push(...segmentMarkdownPipeTables(trimmed));
+  }
+  return segments.length ? segments : [{ type: "text", text: prepared }];
+}
+
+function renderDocumentChunkMarkdown(chunk) {
+  const segments = segmentDocumentWriterMarkdown(chunk);
   return segments.map((seg, si) => {
     if (seg.type === "table" && Array.isArray(seg.headers) && Array.isArray(seg.rows)) {
       const headers = seg.headers.map((x) => String(x ?? "").replace(/\*/g, "").trim());
       const rows = seg.rows.map((r) =>
         (Array.isArray(r) ? r : []).map((c) => String(c ?? "").replace(/\*/g, "").trim())
       );
-      return <CanvasTable key={`dw-tbl-${si}`} headers={headers} rows={rows} subtitle="Document Table" highlightMetrics />;
+      return <DocumentWriterMarkdownTable key={`dw-tbl-${si}`} headers={headers} rows={rows} />;
     }
     if (seg.type === "hr") {
       return (
@@ -222,22 +356,28 @@ function DocumentSolutionBlock({ block, animationIndex = 0, messageId, onExportC
   const sections = Array.isArray(block.sections) ? block.sections : [];
   const safeMid = String(messageId || "doc").replace(/[^a-zA-Z0-9_-]/g, "") || "doc";
 
-  const fullText = [title.trim() ? `# ${title.trim()}` : "", content.trim()].filter(Boolean).join("\n\n");
+  const bodyForDoc = useMemo(() => stripLeadingDuplicateDocTitle(content, title), [content, title]);
+
+  const fullText = useMemo(
+    () => [title.trim() ? `# ${title.trim()}` : "", (bodyForDoc || "").trim()].filter(Boolean).join("\n\n"),
+    [title, bodyForDoc]
+  );
 
   const docBodyScrollRef = useRef(null);
 
   const parts = useMemo(() => {
-    const c = (content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const c = (bodyForDoc || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     if (!c.trim()) return [];
     const bits = c.split(DOCUMENT_SECTION_SPLIT);
-    const out = bits.map((t) => String(t).trim()).filter(Boolean);
-    return out.length ? out : [c.trim()];
-  }, [content]);
+    let out = bits.map((t) => String(t).trim()).filter(Boolean);
+    out = out.length ? out : [c.trim()];
+    return mergeAdjacentDuplicateHeadingParts(out);
+  }, [bodyForDoc]);
 
   useLayoutEffect(() => {
     const el = docBodyScrollRef.current;
     if (el) el.scrollTop = 0;
-  }, [content, messageId]);
+  }, [bodyForDoc, messageId]);
 
   const [copied, setCopied] = useState(false);
   const copyDoc = async () => {
@@ -280,14 +420,17 @@ function DocumentSolutionBlock({ block, animationIndex = 0, messageId, onExportC
 
   const navEntries = useMemo(() => {
     if (parts.length <= 1) return [];
-    return parts.map((part, pi) => {
+    const rows = parts.map((part, pi) => {
       const api = sections[pi] != null ? String(sections[pi]).trim() : "";
       const extracted = extractSectionHeadingLabel(part);
-      return {
-        idx: pi,
-        label: api || extracted || `Section ${pi + 1}`,
-      };
+      const label = api || extracted || `Section ${pi + 1}`;
+      return { idx: pi, label };
     });
+    /** Drop consecutive pills with the same title (duplicate API section names or leftover merge edge cases). */
+    return rows.filter(
+      (nav, i) =>
+        i === 0 || normalizeHeadingTitle(nav.label) !== normalizeHeadingTitle(rows[i - 1].label)
+    );
   }, [parts, sections]);
 
   const metaBadge =

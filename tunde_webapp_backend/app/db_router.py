@@ -7,6 +7,7 @@ through the legacy task pipeline.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
 from tunde_webapp_backend.app.db import db_session
+from tunde_webapp_backend.app.models.business_research import BusinessResearch
 from tunde_webapp_backend.app.models.canvas_page import CanvasPage
 from tunde_webapp_backend.app.models.conversation import Conversation
 from tunde_webapp_backend.app.models.message import Message
@@ -295,3 +297,52 @@ def update_canvas_page(canvas_id: uuid.UUID, body: CanvasPageUpdateBody) -> dict
         session.add(row)
         session.flush()
         return {"ok": True, "canvas_page": _canvas_out(row)}
+
+
+def _business_research_out(row: BusinessResearch) -> dict:
+    payload: dict = {}
+    try:
+        payload = json.loads(row.payload_json or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    acct = None
+    if row.accounting_snapshot_json:
+        try:
+            acct = json.loads(row.accounting_snapshot_json)
+        except json.JSONDecodeError:
+            acct = None
+    return {
+        "research_id": str(row.research_id),
+        "user_id": row.user_id,
+        "session_id": str(row.session_id) if row.session_id else None,
+        "niche_query": row.niche_query,
+        "payload": payload,
+        "accounting_snapshot": acct,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@router.get("/business-research")
+def list_business_research(
+    user_id: str = Query(..., min_length=1, max_length=128),
+    session_id: uuid.UUID | None = None,
+    limit: int = Query(24, ge=1, le=200),
+) -> dict:
+    """List persisted Business Agent snapshots for a user (newest first)."""
+    with db_session() as session:
+        q = select(BusinessResearch).where(BusinessResearch.user_id == user_id)
+        if session_id is not None:
+            q = q.where(BusinessResearch.session_id == session_id)
+        q = q.order_by(desc(BusinessResearch.updated_at)).limit(limit)
+        rows = session.scalars(q).all()
+        return {"ok": True, "items": [_business_research_out(r) for r in rows]}
+
+
+@router.get("/business-research/{research_id}")
+def get_business_research(research_id: uuid.UUID) -> dict:
+    with db_session() as session:
+        row = session.get(BusinessResearch, research_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Business research record not found.")
+        return {"ok": True, "item": _business_research_out(row)}

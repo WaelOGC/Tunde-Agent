@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 /** px — sync with Tailwind min/max classes on the composer textarea */
 const COMPOSER_TEXTAREA_MIN_PX = 48;
@@ -14,6 +14,7 @@ import CodeBlock from "./CodeBlock";
 import ResearchReportDocument from "./ResearchReportDocument";
 import DataChart, { chartDataScatterConvertible } from "./DataChart";
 import { AssistantFormattedText } from "../utils/AssistantFormattedText";
+import { stripExecutiveSummary } from "../utils/executiveText";
 import { prepareAssistantMarkdown, segmentMarkdownPipeTables } from "../utils/markdownTables";
 
 function SendIcon({ className }) {
@@ -170,72 +171,27 @@ function formatDocumentTypeLabel(raw) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** GitHub-style pipe tables on white paper (segmentMarkdownPipeTables output). */
-function DocumentPipeTable({ headers, rows }) {
-  if (!Array.isArray(headers) || !Array.isArray(rows)) return null;
-  const h = headers.map((x) => String(x ?? "").trim());
-  const safeRows = rows.map((r) => {
-    const row = Array.isArray(r) ? r : [];
-    const copy = row.map((c) => String(c ?? "").trim());
-    while (copy.length < h.length) copy.push("");
-    return copy.slice(0, h.length);
-  });
-  return (
-    <div className="my-4 w-full overflow-x-auto">
-      <table
-        className="w-full border-collapse text-left text-[#1a1a1a]"
-        style={{ borderCollapse: "collapse", margin: "16px 0" }}
-      >
-        <thead>
-          <tr>
-            {h.map((cell, i) => (
-              <th
-                key={`th-${i}`}
-                className="border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-[#111111]"
-                style={{ padding: "8px", border: "1px solid #e2e8f0", background: "#f8fafc", fontWeight: 600 }}
-              >
-                {cell}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {safeRows.map((row, ri) => (
-            <tr key={`tr-${ri}`}>
-              {row.map((cell, ci) => (
-                <td
-                  key={`td-${ri}-${ci}`}
-                  className="border border-slate-200 px-2 py-2 text-sm text-[#1a1a1a]"
-                  style={{ padding: "8px", border: "1px solid #e2e8f0" }}
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function renderDocumentChunkMarkdown(chunk) {
   const prepared = prepareAssistantMarkdown(chunk || "");
   const segments = segmentMarkdownPipeTables(prepared);
   return segments.map((seg, si) => {
     if (seg.type === "table" && Array.isArray(seg.headers) && Array.isArray(seg.rows)) {
-      return <DocumentPipeTable key={`dw-tbl-${si}`} headers={seg.headers} rows={seg.rows} />;
+      const headers = seg.headers.map((x) => String(x ?? "").replace(/\*/g, "").trim());
+      const rows = seg.rows.map((r) =>
+        (Array.isArray(r) ? r : []).map((c) => String(c ?? "").replace(/\*/g, "").trim())
+      );
+      return <CanvasTable key={`dw-tbl-${si}`} headers={headers} rows={rows} subtitle="Document Table" highlightMetrics />;
     }
     if (seg.type === "hr") {
       return (
         <hr
           key={`dw-hr-${si}`}
-          className="my-6 border-0 border-t border-slate-300"
+          className="my-8 border-0 border-t border-white/10"
         />
       );
     }
     const t = typeof seg.text === "string" ? seg.text : "";
-    return <AssistantFormattedText key={`dw-txt-${si}`} text={t} paper />;
+    return <AssistantFormattedText key={`dw-txt-${si}`} text={t} highlightTokens />;
   });
 }
 
@@ -354,9 +310,13 @@ function DocumentSolutionBlock({ block, animationIndex = 0, messageId, onExportC
         <div
           className="document-paper-shell rounded-xl border border-slate-300/90 shadow-[0_4px_24px_rgba(15,23,42,0.12)]"
           style={{
-            background: "white",
-            color: "#1c1c1e",
-            fontFamily: 'Georgia, "Times New Roman", serif',
+            background: "rgba(15, 23, 35, 0.6)",
+            color: "#e2e8f0",
+            borderColor: "rgba(255,255,255,0.10)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            fontFamily:
+              'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif',
             padding: "40px 48px",
           }}
         >
@@ -366,7 +326,7 @@ function DocumentSolutionBlock({ block, animationIndex = 0, messageId, onExportC
               id={`dw-sec-${safeMid}-${ci}`}
               className={ci > 0 ? "mt-6 border-t border-slate-200 pt-6" : ""}
             >
-              <div className="min-w-0 text-[15px] leading-[1.75] text-[#1c1c1e]">{renderDocumentChunkMarkdown(chunk)}</div>
+              <div className="min-w-0 text-[15px] leading-relaxed text-slate-200">{renderDocumentChunkMarkdown(chunk)}</div>
             </div>
           ))}
         </div>
@@ -1131,7 +1091,12 @@ const TOOL_MENU_SECTIONS = [
         hint: "Reports, proposals, emails, letters — professional drafts",
         live: true,
       },
-      { id: "business_agent", label: "Business Agent", live: false },
+      {
+        id: "business_agent",
+        label: "Business Agent",
+        hint: "Market & competitor intel, SWOT, P/L scenarios, radar & outlook",
+        live: true,
+      },
     ],
   },
   {
@@ -1212,6 +1177,13 @@ function CanvasSavedCard({ block, onOpen, animationIndex = 0 }) {
   );
 }
 
+function tableLooksFinancial(headers) {
+  const h = (Array.isArray(headers) ? headers : []).join(" ").toLowerCase();
+  return /\b(revenue|ebitda|margin|profit|loss|cost|tax|yoy|p\/l|opex|cogs|capex|arr|mrr|gmv|ebit|balance|cash)\b/.test(
+    h
+  );
+}
+
 function AssistantRichText({ text }) {
   const segments = useMemo(
     () => segmentMarkdownPipeTables(prepareAssistantMarkdown(text || "")),
@@ -1224,14 +1196,16 @@ function AssistantRichText({ text }) {
         if (seg.type === "table") {
           const delay = tableIdx * 45;
           tableIdx += 1;
+          const fin = tableLooksFinancial(seg.headers);
           return (
             <CanvasTable
               key={`tbl-${i}`}
               headers={seg.headers}
               rows={seg.rows}
               title={null}
-              subtitle="Table"
+              subtitle={fin ? "Financial table" : "Table"}
               delayMs={delay}
+              highlightMetrics={fin}
             />
           );
         }
@@ -1246,9 +1220,335 @@ function AssistantRichText({ text }) {
   );
 }
 
+const BUSINESS_TOOLKIT_BTN =
+  "inline-flex items-center gap-1.5 rounded-full border border-emerald-500/35 bg-emerald-500/[0.08] px-3 py-1.5 text-[11px] font-semibold text-emerald-100/95 shadow-sm transition hover:border-emerald-400/55 hover:bg-emerald-500/15 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40";
+
+function formatMessageTimestamp(iso) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return "—";
+  }
+}
+
+function BusinessOpenStrip({ messageId, generatedAt, onBusinessAction }) {
+  const formatted = formatMessageTimestamp(generatedAt);
+  const fireOpen = () => {
+    if (typeof onBusinessAction !== "function") return;
+    onBusinessAction({ action: "open", messageId });
+  };
+  return (
+    <div
+      className="canvas-block-enter mt-3 overflow-hidden rounded-2xl border border-white/[0.12] bg-white/[0.05] px-4 py-3 shadow-[0_18px_48px_rgba(0,0,0,0.45)] ring-1 ring-white/[0.08] backdrop-blur-xl first:mt-0"
+      style={{ animationDelay: `40ms`, backgroundColor: "rgba(13,15,20,0.72)" }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span
+            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/35 bg-emerald-500/15 text-lg shadow-inner ring-1 ring-emerald-500/20"
+            aria-hidden
+          >
+            📊
+          </span>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold leading-snug text-slate-100">
+              Data report · Tunde — Business Performance Dashboard
+            </p>
+            <p className="mt-1 text-[11px] font-medium text-slate-500">
+              Generated · <span className="text-slate-400">{formatted}</span>
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={fireOpen}
+          className="shrink-0 rounded-xl border border-emerald-400/55 bg-emerald-500/[0.18] px-5 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-50 shadow-[0_8px_28px_rgba(16,185,129,0.18)] transition hover:border-emerald-300/70 hover:bg-emerald-500/28 active:scale-[0.98]"
+        >
+          Open
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BusinessBriefCard({ fields, raw }) {
+  const f = fields && typeof fields === "object" ? fields : {};
+  const rows = [
+    ["Niche", f.niche],
+    ["Market", f.market],
+    ["Budget", f.budget],
+    ["Geography", f.geography],
+    ["Timeline", f.timeline],
+    ["Goal", f.goal],
+  ].filter(([, v]) => v && String(v).trim());
+  const rawText = typeof raw === "string" ? raw.trim() : "";
+  return (
+    <div className="mt-2 w-full overflow-hidden rounded-xl border border-white/20 bg-slate-950/50 text-left shadow-[0_12px_40px_rgba(0,0,0,0.35)] ring-1 ring-white/10 backdrop-blur-md">
+      <div className="border-b border-white/[0.08] bg-white/[0.04] px-3 py-2">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-200/90">Business brief</p>
+        <p className="mt-0.5 text-[11px] text-white/55">Read-only parameters extracted from your message</p>
+      </div>
+      <div className="space-y-2 px-3 py-3">
+        {rows.length ? (
+          <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {rows.map(([label, val]) => (
+              <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2">
+                <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+                <dd className="mt-1 text-[13px] leading-snug text-white/95">{String(val)}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="text-[12px] leading-relaxed text-white/80">No labeled fields detected — showing your brief as a single focus line.</p>
+        )}
+        {f.notes && String(f.notes).trim() ? (
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Notes</p>
+            <p className="mt-1 whitespace-pre-wrap text-[12px] leading-relaxed text-white/85">{String(f.notes)}</p>
+          </div>
+        ) : null}
+        {rawText && (rows.length > 0 || (f.notes && String(f.notes).trim())) ? (
+          <details className="rounded-lg border border-white/[0.05] bg-black/20 px-2 py-1 text-[11px] text-white/70">
+            <summary className="cursor-pointer select-none py-1 font-medium text-white/80">Original message</summary>
+            <p className="mt-1 whitespace-pre-wrap pb-2 text-[12px] leading-relaxed text-white/75">{rawText}</p>
+          </details>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+const DEFERRED_TOOLKIT_IDS = new Set(["radar", "simulate", "swot", "tax", "web_page"]);
+
+function BusinessSolutionBlock({
+  block,
+  messageId,
+  animationIndex = 0,
+  onBusinessAction,
+  canvasOpen = false,
+  canvasView = "landing",
+  canvasLinkedMessageId = null,
+  onCanvasChipFocus,
+}) {
+  const [pendingAction, setPendingAction] = useState(null);
+  const [pendingNote, setPendingNote] = useState("");
+
+  const summaryRaw = typeof block.narrative_summary === "string" ? block.narrative_summary : "";
+  const summary = stripExecutiveSummary(summaryRaw);
+  const q = typeof block.query === "string" ? block.query : "";
+  const conf = typeof block.confidence === "string" ? block.confidence : "";
+  const searchSt = typeof block.search_status === "string" ? block.search_status : "";
+  const niche =
+    block.market_analysis && typeof block.market_analysis === "object" && typeof block.market_analysis.niche === "string"
+      ? block.market_analysis.niche.trim()
+      : "";
+  const canvasActive =
+    Boolean(canvasOpen) && canvasView === "business" && canvasLinkedMessageId != null && messageId === canvasLinkedMessageId;
+
+  const toolkitToggle = (action) => {
+    setPendingAction((prev) => (prev === action ? null : action));
+    setPendingNote("");
+  };
+
+  const confirmPending = () => {
+    if (!pendingAction || typeof onBusinessAction !== "function") return;
+    onBusinessAction({ action: pendingAction, messageId, context: pendingNote.trim() });
+    setPendingAction(null);
+    setPendingNote("");
+  };
+
+  const cancelPending = () => {
+    setPendingAction(null);
+    setPendingNote("");
+  };
+
+  const pendingPlaceholder =
+    pendingAction === "radar"
+      ? "Optional: positioning focus, segment, or how Business Agent should weight the radar…"
+      : pendingAction === "simulate"
+        ? "Optional: scenario notes, growth assumptions, or constraints for the simulation…"
+        : pendingAction === "swot"
+          ? "Optional: lens (geography, product line, risk posture) for the SWOT canvas…"
+          : pendingAction === "tax"
+            ? "Optional: jurisdiction, entity type, or reporting angle for the tax section…"
+            : pendingAction === "web_page"
+              ? "Optional: tone, sections to emphasize, or CTAs for the generated web page…"
+              : "Add instructions for Business Agent…";
+
+  const metaBadge =
+    "rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/75";
+
+  return (
+    <div
+      className="canvas-block-enter mt-4 overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_24px_48px_rgba(0,0,0,0.55)] first:mt-0"
+      style={{ animationDelay: `${animationIndex * 50}ms`, backgroundColor: "#0d0f14" }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5" style={{ backgroundColor: "#0d0f14" }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-md border border-emerald-500/40 bg-emerald-500/12 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-100/95">
+            📈 Business Agent
+          </span>
+          {conf ? <span className={metaBadge}>Confidence: {conf}</span> : null}
+          {searchSt ? <span className={metaBadge}>Search: {searchSt}</span> : null}
+        </div>
+      </div>
+
+      {canvasActive ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-900/30 bg-emerald-950/25 px-3 py-2">
+          <p className="text-[11px] font-medium text-emerald-100/90">Business Agent canvas is open for this pack.</p>
+          <button
+            type="button"
+            onClick={() => onCanvasChipFocus?.()}
+            className="shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-50 hover:bg-emerald-500/25"
+          >
+            Focus panel
+          </button>
+        </div>
+      ) : null}
+
+      {(niche || q.trim()) ? (
+        <div className="border-b border-white/[0.06] px-3 py-2.5" style={{ backgroundColor: "#0b0c10" }}>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Focus</p>
+          <p className="mt-1 text-[13px] font-medium text-slate-100">{niche || q.trim()}</p>
+        </div>
+      ) : null}
+
+      {summary.trim() ? (
+        <div className="border-b border-white/[0.06] px-3 py-4" style={{ backgroundColor: "#0d0f14" }}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/85">Executive summary</p>
+          <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 shadow-inner ring-1 ring-white/[0.04] backdrop-blur-md">
+            <div className="font-serif text-[14px] leading-relaxed tracking-tight text-slate-100 [&_p]:my-2">
+              <AssistantFormattedText text={summary} highlightTokens />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-3 border-b border-white/[0.06] px-3 py-3" style={{ backgroundColor: "#0b0c10" }}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Business toolkit</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={BUSINESS_TOOLKIT_BTN} onClick={() => toolkitToggle("radar")}>
+            📊 View Radar
+          </button>
+          <button type="button" className={BUSINESS_TOOLKIT_BTN} onClick={() => toolkitToggle("simulate")}>
+            📉 Run Simulation
+          </button>
+          <button type="button" className={BUSINESS_TOOLKIT_BTN} onClick={() => toolkitToggle("swot")}>
+            ⚖️ SWOT Analysis
+          </button>
+          <button type="button" className={BUSINESS_TOOLKIT_BTN} onClick={() => toolkitToggle("tax")}>
+            📑 Tax Report
+          </button>
+          <button type="button" className={BUSINESS_TOOLKIT_BTN} onClick={() => toolkitToggle("web_page")}>
+            🌐 Generate Web Page
+          </button>
+        </div>
+
+        {pendingAction && DEFERRED_TOOLKIT_IDS.has(pendingAction) ? (
+          <div className="rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-3 py-3 ring-1 ring-emerald-500/15">
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-emerald-200/85">
+              Instructions for Business Agent
+            </label>
+            <textarea
+              value={pendingNote}
+              onChange={(e) => setPendingNote(e.target.value)}
+              placeholder={pendingPlaceholder}
+              rows={3}
+              className="mt-2 w-full resize-y rounded-lg border border-white/[0.08] bg-black/35 px-3 py-2 text-[13px] leading-relaxed text-slate-100 placeholder:text-slate-600 focus:border-emerald-500/45 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+            />
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelPending}
+                className="rounded-lg border border-slate-600/80 bg-slate-900/50 px-3 py-1.5 text-[12px] font-semibold text-slate-300 hover:bg-slate-800/80"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmPending}
+                className="rounded-lg border border-emerald-500/50 bg-emerald-500/25 px-4 py-1.5 text-[12px] font-bold text-emerald-50 hover:bg-emerald-500/35"
+              >
+                Confirm &amp; send
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Renders only for ``messageTool === "math_solver"``; data is keyed by message id (see ``mathResults`` map). */
+function MathSolverBlock({ block, animationIndex = 0, messageId }) {
+  const steps = Array.isArray(block.steps) ? block.steps : [];
+  const answer = typeof block.answer === "string" ? block.answer : String(block.answer ?? "");
+  const topicRaw = typeof block.topic === "string" ? block.topic.trim() : "";
+  const topicLabel = topicRaw || "Math";
+  const confidence = typeof block.confidence === "string" ? block.confidence : "";
+  const safeMid = String(messageId || "math").replace(/[^a-zA-Z0-9_-]/g, "") || "math";
+
+  return (
+    <div
+      className="canvas-block-enter mt-4 overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_24px_48px_rgba(0,0,0,0.55)] first:mt-0"
+      style={{ animationDelay: `${animationIndex * 50}ms`, backgroundColor: "#0d0f14" }}
+    >
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5"
+        style={{ backgroundColor: "#0d0f14" }}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-md border border-amber-500/40 bg-amber-500/12 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-100/95">
+            ∑ Math Solver
+          </span>
+          <span className="rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/75">
+            {topicLabel}
+          </span>
+          {confidence ? (
+            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+              Confidence: {confidence}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="border-b border-white/[0.06] px-3 py-3" style={{ backgroundColor: "#0b0c10" }}>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/85">Step-by-step</p>
+        {steps.length ? (
+          <ol className="mt-3 list-decimal space-y-3 pl-5 text-[13px] leading-relaxed text-slate-200 marker:text-amber-500/85">
+            {steps.map((line, si) => (
+              <li key={`${safeMid}-step-${si}`} className="pl-1">
+                <AssistantFormattedText text={typeof line === "string" ? line : String(line ?? "")} />
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-2 text-sm text-slate-500">No steps returned.</p>
+        )}
+      </div>
+
+      {answer.trim() ? (
+        <div className="border-t border-amber-900/35 px-3 py-4" style={{ backgroundColor: "#0d0f14" }}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90">Final answer</p>
+          <div className="mt-2 rounded-lg border border-amber-500/35 bg-amber-500/[0.12] px-3 py-2.5 ring-1 ring-amber-500/10">
+            <div className="text-base font-semibold tracking-tight text-white [&_p]:my-0">
+              <AssistantFormattedText text={answer} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function MessageBlocks({
   blocks,
   messageId,
+  messageTool = null,
+  mathResults = null,
+  messageTimestamp = null,
   canvasOpen = false,
   canvasView = "landing",
   canvasLinkedMessageId = null,
@@ -1260,6 +1560,7 @@ function MessageBlocks({
   onDocumentWriterExportCanvas,
   onCanvasCardOpen,
   onDataAnalystFollowUp,
+  onBusinessAction,
 }) {
   if (!blocks || !blocks.length) return null;
   const canvasChipActive =
@@ -1336,44 +1637,18 @@ function MessageBlocks({
           );
         }
         if (kind === "math_solution") {
-          const steps = Array.isArray(b.steps) ? b.steps : [];
-          const answer = typeof b.answer === "string" ? b.answer : String(b.answer ?? "");
-          const topic = typeof b.topic === "string" ? b.topic : "Math";
-          const confidence = typeof b.confidence === "string" ? b.confidence : "";
+          if (messageTool !== "math_solver") return null;
+          const resolved =
+            mathResults && typeof mathResults === "object" && messageId != null && mathResults[messageId]
+              ? mathResults[messageId]
+              : b;
           return (
-            <div
-              key={i}
-              className="canvas-block-enter mt-4 overflow-hidden rounded-xl border border-amber-900/45 bg-gradient-to-br from-amber-950/30 to-slate-950/80 shadow-[0_8px_28px_rgba(0,0,0,0.35)] ring-1 ring-amber-800/25 first:mt-0"
-              style={{ animationDelay: `${i * 50}ms` }}
-            >
-              <div className="flex flex-wrap items-center gap-2 border-b border-amber-900/30 px-3 py-2">
-                <span className="rounded-md border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-200/95">
-                  {topic}
-                </span>
-                {confidence ? (
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                    Confidence: {confidence}
-                  </span>
-                ) : null}
-              </div>
-              {steps.length ? (
-                <ol className="list-decimal space-y-2 px-5 py-3 text-[13px] leading-relaxed text-slate-200 marker:text-amber-500/80">
-                  {steps.map((line, si) => (
-                    <li key={si} className="pl-1">
-                      {line}
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="px-3 py-2 text-sm text-slate-500">No steps returned.</p>
-              )}
-              {answer ? (
-                <div className="border-t border-amber-900/30 bg-amber-500/[0.07] px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/90">Final answer</p>
-                  <p className="mt-1.5 text-base font-semibold tracking-tight text-white">{answer}</p>
-                </div>
-              ) : null}
-            </div>
+            <MathSolverBlock
+              key={`math-${messageId}-${i}`}
+              block={resolved}
+              animationIndex={i}
+              messageId={messageId}
+            />
           );
         }
         if (kind === "science_solution") {
@@ -1869,6 +2144,23 @@ function MessageBlocks({
             />
           );
         }
+        if (kind === "business_solution") {
+          return (
+            <Fragment key={`biz-${messageId}-${i}`}>
+              <BusinessSolutionBlock
+                block={b}
+                messageId={messageId}
+                animationIndex={i}
+                onBusinessAction={onBusinessAction}
+                canvasOpen={canvasOpen}
+                canvasView={canvasView}
+                canvasLinkedMessageId={canvasLinkedMessageId}
+                onCanvasChipFocus={onCanvasChipFocus}
+              />
+              <BusinessOpenStrip messageId={messageId} generatedAt={messageTimestamp} onBusinessAction={onBusinessAction} />
+            </Fragment>
+          );
+        }
         if (kind === "research_solution") {
           if (canvasChipActive && canvasView === "research") {
             return (
@@ -2012,6 +2304,7 @@ export default function ChatCenter({
     study_assistant: false,
     data_analyst: false,
     document_writer: false,
+    business_agent: false,
   },
   onToggleTool,
   onMathSolve,
@@ -2022,6 +2315,7 @@ export default function ChatCenter({
   onCodeSolve,
   onTranslationSolve,
   onResearchSolve,
+  onBusinessSolve,
   onStudySolve,
   onDocumentWriterSolve,
   onDataAnalystSolve,
@@ -2041,6 +2335,7 @@ export default function ChatCenter({
   canvasView = "landing",
   canvasLinkedMessageId = null,
   onCanvasChipFocus,
+  onBusinessAction,
 }) {
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -2054,10 +2349,12 @@ export default function ChatCenter({
   useEffect(() => {
     if (
       !processing ||
-      (!enabledTools.research_agent &&
+      (!enabledTools.math_solver &&
+        !enabledTools.research_agent &&
         !enabledTools.study_assistant &&
         !enabledTools.data_analyst &&
-        !enabledTools.document_writer)
+        !enabledTools.document_writer &&
+        !enabledTools.business_agent)
     ) {
       setResearchThinkingStep(0);
       return undefined;
@@ -2068,13 +2365,28 @@ export default function ChatCenter({
     return () => window.clearInterval(id);
   }, [
     processing,
+    enabledTools.math_solver,
     enabledTools.research_agent,
     enabledTools.study_assistant,
     enabledTools.data_analyst,
     enabledTools.document_writer,
+    enabledTools.business_agent,
   ]);
 
   const researchProgressFilled = Math.min(16, Math.round(((researchThinkingStep + 1) / 3) * 16));
+
+  /** Per-message math payload keyed by ``messageId`` — keeps workspace Math Solver isolated from other agents. */
+  const mathResults = useMemo(() => {
+    const acc = {};
+    for (const x of messages) {
+      if (x.role !== "assistant" || x.tool !== "math_solver") continue;
+      const blk = (x.blocks || []).find(
+        (bb) => String(bb?.type || "").toLowerCase() === "math_solution"
+      );
+      if (blk && typeof blk === "object") acc[x.id] = blk;
+    }
+    return acc;
+  }, [messages]);
 
   const handleScienceReadingTopic = useCallback((topic) => {
     const t = (topic || "").trim();
@@ -2153,6 +2465,9 @@ export default function ChatCenter({
     }
     if (enabledTools.study_assistant) {
       return "What topic do you want to study — goals, level, or sub-area…";
+    }
+    if (enabledTools.business_agent) {
+      return "Describe your market, niche, or competitors — goals, geography, pricing context…";
     }
     if (enabledTools.research_agent) {
       return "Describe your research topic — scope, comparison, or angle…";
@@ -2278,6 +2593,12 @@ export default function ChatCenter({
       setToolsOpen(false);
       return;
     }
+    if (enabledTools.business_agent && typeof onBusinessSolve === "function") {
+      onBusinessSolve(text);
+      setInput("");
+      setToolsOpen(false);
+      return;
+    }
     if (enabledTools.research_agent && typeof onResearchSolve === "function") {
       onResearchSolve(text);
       setInput("");
@@ -2375,6 +2696,12 @@ export default function ChatCenter({
                 Document Writer
               </p>
             ) : null}
+            {enabledTools.business_agent ? (
+              <p className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-200/95">
+                <span aria-hidden>📈</span>
+                Business Agent
+              </p>
+            ) : null}
           </div>
         </header>
       ) : null}
@@ -2432,11 +2759,40 @@ export default function ChatCenter({
                       : "w-full max-w-none flex-1 rounded-tl-sm border border-white/[0.06] bg-white/[0.03] px-3 text-slate-100 sm:px-4",
                   ].join(" ")}
                 >
-                  {isUser ? m.text : (m.text || "").trim() ? <AssistantRichText text={m.text} /> : null}
+                  {isUser ? (
+                    Array.isArray(m.blocks) &&
+                    m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "business_brief") ? (
+                      <>
+                        <p className="text-[12px] font-semibold text-white/90">Request</p>
+                        <BusinessBriefCard
+                          fields={
+                            (m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "business_brief") || {})
+                              .fields
+                          }
+                          raw={
+                            (m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "business_brief") || {})
+                              .raw || m.text
+                          }
+                        />
+                      </>
+                    ) : (m.text || "").trim() ? (
+                      <p className="whitespace-pre-wrap">{m.text}</p>
+                    ) : null
+                  ) : (m.text || "").trim() &&
+                    !(
+                      m.tool === "math_solver" &&
+                      Array.isArray(m.blocks) &&
+                      m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "math_solution")
+                    ) ? (
+                    <AssistantRichText text={m.text} />
+                  ) : null}
                   {!isUser ? (
                     <MessageBlocks
                       blocks={m.blocks}
                       messageId={m.id}
+                      messageTool={m.tool}
+                      mathResults={mathResults}
+                      messageTimestamp={m.timestamp}
                       canvasOpen={canvasOpen}
                       canvasView={canvasView}
                       canvasLinkedMessageId={canvasLinkedMessageId}
@@ -2448,10 +2804,12 @@ export default function ChatCenter({
                       onDocumentWriterExportCanvas={onDocumentWriterExportCanvas}
                       onCanvasCardOpen={onCanvasCardOpen}
                       onDataAnalystFollowUp={onDataAnalystFollowUp}
+                      onBusinessAction={onBusinessAction}
                     />
                   ) : null}
                   {!isUser &&
                   m.canvasFollowUp &&
+                  m.tool !== "math_solver" &&
                   messageHasReportContext(m) &&
                   typeof onCanvasOpen === "function" ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800/60 pt-3">
@@ -2487,7 +2845,31 @@ export default function ChatCenter({
             <div className="flex w-full min-w-0 gap-3">
               <Avatar label="T" className="bg-white/[0.08] text-slate-200 ring-1 ring-white/[0.08]" />
               <div className="min-w-0 flex-1 space-y-3">
-                {enabledTools.document_writer ? (
+                {enabledTools.math_solver ? (
+                  <div className="overflow-hidden rounded-xl rounded-tl-sm border border-amber-800/45 bg-gradient-to-br from-amber-950/45 via-slate-950/90 to-slate-950/95 px-4 py-5 shadow-xl ring-1 ring-amber-900/25">
+                    <p className="text-[14px] font-medium tracking-tight text-white">∑ Solving step by step…</p>
+                    <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[10px] leading-none text-white sm:text-[11px]">
+                      <span className="min-w-0 break-all">
+                        <span className="text-amber-400">{"█".repeat(researchProgressFilled)}</span>
+                        <span className="text-[#3d4354]">{"░".repeat(16 - researchProgressFilled)}</span>
+                      </span>
+                      <span className="shrink-0 text-amber-100/95">Step {researchThinkingStep + 1}/3</span>
+                    </div>
+                    <p className="mt-4 text-[13px] leading-snug text-amber-50/95">
+                      {
+                        ["Parsing the problem", "Working through each step", "Checking the final answer"][
+                          researchThinkingStep
+                        ]
+                      }
+                    </p>
+                    <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-black/60">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-400 transition-[width] duration-500 ease-out"
+                        style={{ width: `${((researchThinkingStep + 1) / 3) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : enabledTools.document_writer ? (
                   <div className="overflow-hidden rounded-xl rounded-tl-sm border border-slate-600/50 bg-gradient-to-br from-slate-950/80 via-blue-950/40 to-slate-950/90 px-4 py-5 shadow-xl ring-1 ring-blue-900/30">
                     <p className="text-[14px] font-medium tracking-tight text-white">📝 Drafting your document…</p>
                     <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[10px] leading-none text-white sm:text-[11px]">
@@ -2559,6 +2941,30 @@ export default function ChatCenter({
                     <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-black/60">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-sky-600 via-indigo-500 to-indigo-400 transition-[width] duration-500 ease-out"
+                        style={{ width: `${((researchThinkingStep + 1) / 3) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : enabledTools.business_agent ? (
+                  <div className="overflow-hidden rounded-xl rounded-tl-sm border border-emerald-800/45 bg-gradient-to-br from-emerald-950/55 via-slate-950/90 to-slate-950/95 px-4 py-5 shadow-xl ring-1 ring-emerald-900/30">
+                    <p className="text-[14px] font-medium tracking-tight text-white">📈 Running business intelligence…</p>
+                    <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[10px] leading-none text-white sm:text-[11px]">
+                      <span className="min-w-0 break-all">
+                        <span className="text-emerald-400">{"█".repeat(researchProgressFilled)}</span>
+                        <span className="text-[#3d4354]">{"░".repeat(16 - researchProgressFilled)}</span>
+                      </span>
+                      <span className="shrink-0 text-emerald-100/95">Step {researchThinkingStep + 1}/3</span>
+                    </div>
+                    <p className="mt-4 text-[13px] leading-snug text-emerald-50/95">
+                      {
+                        ["Live market scan & competitor signals", "Structuring SWOT, radar, and P/L", "Packaging canvas-ready outputs"][
+                          researchThinkingStep
+                        ]
+                      }
+                    </p>
+                    <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-black/60">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-700 via-teal-500 to-cyan-400 transition-[width] duration-500 ease-out"
                         style={{ width: `${((researchThinkingStep + 1) / 3) * 100}%` }}
                       />
                     </div>
@@ -2742,9 +3148,26 @@ export default function ChatCenter({
           !enabledTools.translation_agent &&
           !enabledTools.study_assistant &&
           !enabledTools.data_analyst &&
-          !enabledTools.document_writer ? (
+          !enabledTools.document_writer &&
+          !enabledTools.business_agent ? (
             <p className="mb-2 text-[11px] leading-snug text-amber-400/95">
               Research Agent is on — citations are assistive; verify against primary sources.
+            </p>
+          ) : null}
+          {enabledTools.business_agent &&
+          !enabledTools.math_solver &&
+          !enabledTools.science_agent &&
+          !enabledTools.chemistry_agent &&
+          !enabledTools.space_agent &&
+          !enabledTools.health_agent &&
+          !enabledTools.code_assistant &&
+          !enabledTools.translation_agent &&
+          !enabledTools.study_assistant &&
+          !enabledTools.data_analyst &&
+          !enabledTools.document_writer &&
+          !enabledTools.research_agent ? (
+            <p className="mb-2 text-[11px] leading-snug text-emerald-300/95">
+              Business Agent is on — market maps, SWOT, P/L scenarios, and canvas exports; figures are illustrative.
             </p>
           ) : null}
           {enabledTools.study_assistant &&
@@ -2801,9 +3224,11 @@ export default function ChatCenter({
                               ? "border-cyan-500/45 shadow-[inset_0_1px_0_rgba(34,211,238,0.08)] focus-within:border-teal-400/50 focus-within:shadow-[0_0_0_3px_rgba(20,184,166,0.2)]"
                               : enabledTools.study_assistant
                                 ? "border-sky-500/45 shadow-[inset_0_1px_0_rgba(56,189,248,0.08)] focus-within:border-indigo-500/50 focus-within:shadow-[0_0_0_3px_rgba(14,165,233,0.16)]"
-                                : enabledTools.research_agent
-                                  ? "border-amber-400/45 shadow-[inset_0_1px_0_rgba(250,204,21,0.07)] focus-within:border-amber-400/55 focus-within:shadow-[0_0_0_3px_rgba(250,204,21,0.15)]"
-                                  : "border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus-within:border-violet-500/40 focus-within:shadow-[0_0_0_3px_rgba(124,58,237,0.15)]",
+                                : enabledTools.business_agent
+                                  ? "border-emerald-500/45 shadow-[inset_0_1px_0_rgba(16,185,129,0.08)] focus-within:border-emerald-400/55 focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.18)]"
+                                  : enabledTools.research_agent
+                                    ? "border-amber-400/45 shadow-[inset_0_1px_0_rgba(250,204,21,0.07)] focus-within:border-amber-400/55 focus-within:shadow-[0_0_0_3px_rgba(250,204,21,0.15)]"
+                                    : "border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus-within:border-violet-500/40 focus-within:shadow-[0_0_0_3px_rgba(124,58,237,0.15)]",
               "transition-[box-shadow,border-color] duration-200 ease-out",
             ].join(" ")}
           >

@@ -23,6 +23,12 @@ class TaskStatus(str, Enum):
     failed = "failed"
 
 
+class TaskType(str, Enum):
+    """Orchestrator / tool routing identifiers."""
+
+    BUSINESS_AGENT = "BUSINESS_AGENT"
+
+
 def utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -252,4 +258,69 @@ class DocumentAnswerResponse(BaseModel):
     language: str = "English"
     sections: list[str] = Field(default_factory=list)
     confidence: str = "medium"
+
+
+# --- Business Agent (structured canvas + persistence) ---
+
+
+class BusinessResearchRunRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=8000)
+    user_id: str = Field(default="anonymous", max_length=128)
+    session_id: uuid.UUID | None = None
+    include_live_search: bool = True
+
+
+class BusinessScenarioSimulateRequest(BaseModel):
+    """What-if P/L: simple deterministic projection (basis points on revenue / margin)."""
+
+    label: str = Field(default="Scenario", max_length=256)
+    base_revenue: float = Field(default=1_000_000, ge=0)
+    revenue_growth_yoy: float = Field(default=0.12, ge=-0.95, le=5.0)
+    cogs_ratio: float = Field(default=0.42, ge=0, le=0.99)
+    opex_ratio: float = Field(default=0.28, ge=0, le=0.99)
+    tax_rate: float = Field(default=0.21, ge=0, le=0.6)
+    periods: int = Field(default=4, ge=1, le=12)
+
+
+class BusinessScenarioSimulateResponse(BaseModel):
+    label: str = ""
+    assumptions: list[str] = Field(default_factory=list)
+    pl_rows: list[list[str]] = Field(default_factory=list)
+    chart_series: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class BusinessAgentFullResponse(BaseModel):
+    """Single payload consumed by BusinessAnalysisCanvas + chat `business_solution` blocks."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    research_id: uuid.UUID | None = None
+    session_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    query: str = ""
+    confidence: str = "medium"
+    search_status: str = ""  # ok | partial | unavailable
+    narrative_summary: str = ""
+    market_analysis: dict[str, Any] = Field(default_factory=dict)
+    competitor_analysis: dict[str, Any] = Field(default_factory=dict)
+    competitor_radar: dict[str, Any] = Field(default_factory=dict)
+    review_sentiment: dict[str, Any] = Field(default_factory=dict)
+    swot: dict[str, Any] = Field(default_factory=dict)
+    scenario_simulation: dict[str, Any] = Field(default_factory=dict)
+    market_cap: dict[str, Any] = Field(default_factory=dict)
+    smart_accounting: dict[str, Any] = Field(default_factory=dict)
+    future_outlook: dict[str, Any] = Field(default_factory=dict)
+    canvas_html: str = Field(
+        default="",
+        description="Optional minimal HTML fragment for Landing-style embeds.",
+        max_length=500_000,
+    )
+
+
+class BusinessResearchSaveBody(BaseModel):
+    user_id: str = Field(..., max_length=128)
+    session_id: uuid.UUID | None = None
+    niche_query: str = Field(default="", max_length=8000)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    accounting_snapshot: dict[str, Any] | None = None
 

@@ -36,7 +36,7 @@ function splitPipeRow(line) {
 /**
  * Unwrap ```fenced``` regions that contain pipe tables so the table parser can see them.
  */
-export function unwrapTableCodeFences(text) {
+function unwrapTableCodeFences(text) {
   const str = String(text ?? "");
   return str.replace(/```(?:markdown|md|tbl|table)?\s*\r?\n([\s\S]*?)\r?\n```/gi, (full, inner) => {
     const body = String(inner || "");
@@ -61,7 +61,7 @@ export function prepareAssistantMarkdown(text) {
     let line = lines[i];
     line = line.replace(/\s+$/, "");
     const trimmed = line.trim();
-    // Standalone --- ... (not a markdown pipe table row)
+    // Standalone markdown horizontal rule: --- (allow 3+ dashes), but never a pipe-table row
     if (/^-{3,}$/.test(trimmed) && !trimmed.includes("|")) {
       out.push(HR_TOKEN);
       continue;

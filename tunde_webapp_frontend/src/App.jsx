@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChatCenter from "./components/ChatCenter";
 import LandingCanvasPanel from "./components/LandingCanvasPanel";
+import BusinessAnalysisCanvas from "./components/BusinessAnalysisCanvas";
+import BusinessSimulateModal from "./components/BusinessSimulateModal";
+import { parseBusinessBrief } from "./utils/businessBrief";
+import { buildFullBusinessReportHtml } from "./utils/businessReportHtml";
+import { generatePage, publishPage } from "./utils/canvasExportCore";
 import SettingsPanel from "./components/SettingsPanel";
 import WorkspaceSidebar from "./components/WorkspaceSidebar";
 import TundeHub from "./components/TundeHub";
@@ -33,6 +38,33 @@ function isUuidLike(s) {
   );
 }
 
+function findBusinessSolutionBlock(sessions, sessionId, messageId) {
+  const sess = sessions.find((s) => s.id === sessionId);
+  const msg = sess?.messages?.find((m) => m.id === messageId);
+  if (!msg?.blocks) return null;
+  return msg.blocks.find((b) => String(b?.type || "").toLowerCase() === "business_solution") || null;
+}
+
+function buildBusinessWebPageContext(block, userNotes = "") {
+  if (!block || typeof block !== "object") return "";
+  const parts = [];
+  const notes = typeof userNotes === "string" ? userNotes.trim() : "";
+  if (notes) parts.push(`# Instructions from you\n${notes}`);
+  const ns = typeof block.narrative_summary === "string" ? block.narrative_summary.trim() : "";
+  if (ns) parts.push(`# Executive summary\n${ns}`);
+  const q = typeof block.query === "string" ? block.query.trim() : "";
+  if (q) parts.push(`# Original brief\n${q}`);
+  try {
+    const slice = { ...block };
+    delete slice.type;
+    delete slice.canvas_html;
+    parts.push(`# Structured JSON (for page layout)\n${JSON.stringify(slice, null, 2)}`);
+  } catch {
+    /* ignore */
+  }
+  return parts.join("\n\n").slice(0, 99_000);
+}
+
 async function fetchConversationList() {
   const base = backendHttpBase().replace(/\/$/, "");
   try {
@@ -58,6 +90,20 @@ async function fetchConversationMessages(convId) {
   }
 }
 
+/** DB ``tool_type`` / legacy slugs → workspace tool id (see ``enabledTools`` in ChatCenter). */
+function workspaceToolFromDbToolType(tt) {
+  const t = String(tt || "").toLowerCase();
+  if (t === "math" || t === "math_solver") return "math_solver";
+  return null;
+}
+
+/** When older rows lack ``tool_type``, infer workspace tool from ``blocks_json`` shape. */
+function inferWorkspaceToolFromBlocks(blocks) {
+  if (!Array.isArray(blocks)) return null;
+  if (blocks.some((b) => String(b?.type || "").toLowerCase() === "math_solution")) return "math_solver";
+  return null;
+}
+
 /** Map ``GET /db/conversations/.../messages`` row → in-memory session message. */
 function mapDbApiMessageToSessionMessage(row) {
   let blocks = [];
@@ -71,12 +117,15 @@ function mapDbApiMessageToSessionMessage(row) {
   }
   const roleRaw = String(row?.role || "").toLowerCase();
   const role = roleRaw === "user" ? "user" : roleRaw === "ceo" ? "ceo" : "assistant";
+  const tool =
+    workspaceToolFromDbToolType(row?.tool_type) || inferWorkspaceToolFromBlocks(blocks);
   return {
     id: String(row.message_id),
     role,
     content: typeof row.content === "string" ? row.content : "",
     timestamp: row.timestamp || new Date().toISOString(),
     blocks,
+    tool,
   };
 }
 
@@ -380,6 +429,7 @@ function loadEnabledTools() {
           study_assistant: Boolean(j.study_assistant),
           data_analyst: Boolean(j.data_analyst),
           document_writer: Boolean(j.document_writer),
+          business_agent: Boolean(j.business_agent),
         };
       }
     }
@@ -403,6 +453,7 @@ function loadEnabledTools() {
     study_assistant: false,
     data_analyst: false,
     document_writer: false,
+    business_agent: false,
   };
 }
 
@@ -551,8 +602,16 @@ export function App() {
   const [canvasView, setCanvasView] = useState("landing");
   const [canvasLinkedMessageId, setCanvasLinkedMessageId] = useState(null);
   const canvasLinkedMessageIdRef = useRef(null);
+  /** In-memory fallback if a hydrated message omits blocks (edge cases). */
+  const businessBlockCacheRef = useRef({});
   const [canvasResearchBlock, setCanvasResearchBlock] = useState(null);
   const [canvasCodeBlock, setCanvasCodeBlock] = useState(null);
+  const [canvasBusinessBlock, setCanvasBusinessBlock] = useState(null);
+  /** Increment `id` whenever chat toolkit should switch BusinessAnalysisCanvas tab. */
+  const [businessTabRequest, setBusinessTabRequest] = useState({ id: 0, tab: "overview" });
+  const [businessSimulateMessageId, setBusinessSimulateMessageId] = useState(null);
+  const [businessSimulateNotes, setBusinessSimulateNotes] = useState("");
+  const [businessCanvasShareUrl, setBusinessCanvasShareUrl] = useState("");
   const canvasPanelRef = useRef(null);
   /** @type {React.MutableRefObject<Record<string, { html: string; title: string; kind?: string }>>} */
   const canvasGeneratedHtmlRef = useRef({});
@@ -598,6 +657,7 @@ export function App() {
     canvasLinkedMessageIdRef.current = null;
     setCanvasResearchBlock(null);
     setCanvasCodeBlock(null);
+    setCanvasBusinessBlock(null);
     canvasGeneratedHtmlRef.current = {};
     landingPageVariantRef.current = "workspace";
     lastDataExportRef.current = null;
@@ -709,12 +769,8 @@ export function App() {
 
   const chatMessages = useMemo(() => {
     const raw = activeSession?.messages || [];
-    return raw.map((m) => ({
-      id: m.id,
-      role: m.role === "user" ? "user" : "assistant",
-      text: m.content || m.text || "",
-      canvasFollowUp: Boolean(m.canvasFollowUp),
-      blocks: Array.isArray(m.blocks)
+    return raw.map((m) => {
+      const blocksArr = Array.isArray(m.blocks)
         ? m.blocks.map((b) => {
             if (!b || typeof b !== "object") return b;
             const type = String(b.type || "").toLowerCase();
@@ -727,8 +783,17 @@ export function App() {
             }
             return { ...b, type };
           })
-        : [],
-    }));
+        : [];
+      const tool = m.tool || inferWorkspaceToolFromBlocks(blocksArr);
+      return {
+        id: m.id,
+        role: m.role === "user" ? "user" : "assistant",
+        text: m.content || m.text || "",
+        canvasFollowUp: Boolean(m.canvasFollowUp),
+        tool,
+        blocks: blocksArr,
+      };
+    });
   }, [activeSession?.messages]);
 
   const liveToolLineForChat = useMemo(() => {
@@ -742,7 +807,7 @@ export function App() {
   const patchSessionMessages = useCallback((sessionId, updater) => {
     setSessions((ss) =>
       ss.map((s) => {
-        if (s.id !== sessionId) return s;
+        if (s.id !== activeSessionIdRef.current || s.id !== sessionId) return s;
         const nextMessages = typeof updater === "function" ? updater(s.messages) : updater;
         return { ...s, messages: nextMessages };
       })
@@ -858,6 +923,7 @@ export function App() {
       setCanvasView("landing");
       setCanvasResearchBlock(null);
       setCanvasCodeBlock(null);
+      setCanvasBusinessBlock(null);
       landingPendingFullHtmlRef.current = hit.html;
       setLandingState((s) => ({
         ...s,
@@ -885,6 +951,7 @@ export function App() {
       setCanvasView("landing");
       setCanvasResearchBlock(null);
       setCanvasCodeBlock(null);
+      setCanvasBusinessBlock(null);
       landingPendingFullHtmlRef.current = hit.html;
       setLandingState((s) => ({
         ...s,
@@ -911,6 +978,7 @@ export function App() {
     setCanvasView("research");
     setCanvasResearchBlock(rb);
     setCanvasCodeBlock(null);
+    setCanvasBusinessBlock(null);
     setLandingOpen(true);
     setLandingBusy(false);
   }, []);
@@ -1468,6 +1536,7 @@ export function App() {
             id: assistantMsgId,
             role: "assistant",
             content: "",
+            tool: "math_solver",
             timestamp: new Date().toISOString(),
             blocks,
           },
@@ -1479,7 +1548,7 @@ export function App() {
             role: "assistant",
             content: "",
             blocks,
-            toolType: "math",
+            toolType: "math_solver",
           });
           await saveToolResult("math", trimmed, data, convId, assistantMsgId);
         }
@@ -2211,6 +2280,7 @@ export function App() {
           confidence,
         });
         setCanvasResearchBlock(null);
+        setCanvasBusinessBlock(null);
         setCanvasLinkedMessageId(assistantMsgId);
         canvasLinkedMessageIdRef.current = assistantMsgId;
         setLandingOpen(true);
@@ -2514,6 +2584,7 @@ export function App() {
         setCanvasView("research");
         setCanvasResearchBlock(researchBlockPayload);
         setCanvasCodeBlock(null);
+        setCanvasBusinessBlock(null);
         setCanvasLinkedMessageId(assistantMsgId);
         canvasLinkedMessageIdRef.current = assistantMsgId;
         setLandingOpen(true);
@@ -2534,6 +2605,399 @@ export function App() {
       }
     },
     [activeSessionId, connected, ensureDbConversation, patchSessionMessages]
+  );
+
+  const submitBusinessQuestion = useCallback(
+    async (text) => {
+      const trimmed = (text || "").trim();
+      if (!trimmed || !connected) return;
+
+      const userMsgId = makeMessageId();
+      const assistantMsgId = makeMessageId();
+      const ts = new Date().toISOString();
+      const convId = await ensureDbConversation(activeSessionId, {
+        title: trimmed.slice(0, 512),
+        tool_used: "business_agent",
+      });
+      const briefFields = parseBusinessBrief(trimmed).fields;
+      const userBlocks = [{ type: "business_brief", fields: briefFields, raw: trimmed }];
+      patchSessionMessages(activeSessionId, (m) => [
+        ...m,
+        { id: userMsgId, role: "user", content: trimmed, timestamp: ts, blocks: userBlocks },
+      ]);
+      if (convId) {
+        await postDbMessage({
+          convId,
+          messageId: userMsgId,
+          role: "user",
+          content: trimmed,
+          blocks: userBlocks,
+          toolType: null,
+        });
+      }
+      setSessions((ss) =>
+        ss.map((s) =>
+          s.id === activeSessionId && s.title === "New chat" ? { ...s, title: trimmed.slice(0, 40) } : s
+        )
+      );
+
+      setProcessing(true);
+      setLatestStatus("running");
+      setLatestMessage("Business Agent…");
+      setThoughtLog([]);
+
+      const base = backendHttpBase().replace(/\/$/, "");
+      try {
+        const r = await fetch(`${base}/tools/business/research`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: trimmed,
+            user_id: session.userId || "anonymous",
+            include_live_search: true,
+          }),
+        });
+        const rawBody = await r.text();
+        if (!r.ok) {
+          let detail = rawBody.slice(0, 400);
+          try {
+            const ej = JSON.parse(rawBody);
+            if (ej && typeof ej.detail === "string") detail = ej.detail;
+            else if (Array.isArray(ej?.detail) && ej.detail[0]?.msg) detail = String(ej.detail[0].msg);
+          } catch {
+            /* ignore */
+          }
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ **Business Agent** — request failed\n\n${detail}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        let data;
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: "⚠️ **Business Agent** — invalid server response.",
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        const businessBlockPayload = { ...data, type: "business_solution" };
+        businessBlockCacheRef.current[assistantMsgId] = businessBlockPayload;
+        const qLabel = typeof data.query === "string" && data.query.trim() ? data.query.trim().slice(0, 120) : "your market";
+        const introText = `**Business Agent** — business pack ready for *${qLabel}*. Summary and toolkit are below; open the Canvas anytime.`;
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            timestamp: new Date().toISOString(),
+            blocks: [businessBlockPayload],
+          },
+        ]);
+        if (convId) {
+          await postDbMessage({
+            convId,
+            messageId: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            blocks: [businessBlockPayload],
+            toolType: "business_agent",
+          });
+          await saveToolResult("business_agent", trimmed, data, convId, assistantMsgId);
+        }
+        setCanvasView("business");
+        setCanvasBusinessBlock(businessBlockPayload);
+        setCanvasResearchBlock(null);
+        setCanvasCodeBlock(null);
+        setCanvasLinkedMessageId(assistantMsgId);
+        canvasLinkedMessageIdRef.current = assistantMsgId;
+        setBusinessTabRequest((prev) => ({ id: prev.id + 1, tab: "overview" }));
+        setLandingOpen(true);
+      } catch {
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: makeMessageId(),
+            role: "assistant",
+            content: "⚠️ **Business Agent** — could not reach the server.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setProcessing(false);
+        setLatestStatus("idle");
+        setLatestMessage("");
+      }
+    },
+    [activeSessionId, connected, ensureDbConversation, patchSessionMessages, session.userId]
+  );
+
+  const openBusinessPack = useCallback((messageId, tab = "overview", extras = {}) => {
+    const sid = activeSessionIdRef.current;
+    let b =
+      findBusinessSolutionBlock(sessionsRef.current, sid, messageId) || businessBlockCacheRef.current[messageId];
+    if (!b) return;
+    if (canvasLinkedMessageIdRef.current !== messageId) {
+      setBusinessCanvasShareUrl("");
+    }
+    const normalized = { ...b, type: "business_solution", ...(extras && typeof extras === "object" ? extras : {}) };
+    businessBlockCacheRef.current[messageId] = normalized;
+    setCanvasBusinessBlock(normalized);
+    setCanvasView("business");
+    setCanvasResearchBlock(null);
+    setCanvasCodeBlock(null);
+    setCanvasLinkedMessageId(messageId);
+    canvasLinkedMessageIdRef.current = messageId;
+    setBusinessTabRequest((prev) => ({ id: prev.id + 1, tab: tab || "overview" }));
+    setLandingOpen(true);
+  }, []);
+
+  const applyBusinessSimulation = useCallback(
+    (messageId, simData) => {
+      if (!messageId || !simData) return;
+      const sid = activeSessionIdRef.current;
+      const block =
+        findBusinessSolutionBlock(sessionsRef.current, sid, messageId) || businessBlockCacheRef.current[messageId];
+      if (!block) return;
+      const nextBlock = {
+        ...block,
+        type: "business_solution",
+        scenario_simulation: {
+          ...(typeof block.scenario_simulation === "object" ? block.scenario_simulation : {}),
+          label: simData.label,
+          assumptions: simData.assumptions,
+          pl_rows: simData.pl_rows,
+          chart_series: simData.chart_series,
+          warnings: simData.warnings,
+        },
+      };
+      businessBlockCacheRef.current[messageId] = nextBlock;
+      patchSessionMessages(sid, (msgs) =>
+        msgs.map((m) => {
+          if (m.id !== messageId) return m;
+          const blocks = (m.blocks || []).map((bb) =>
+            String(bb?.type || "").toLowerCase() === "business_solution" ? nextBlock : bb
+          );
+          return { ...m, blocks };
+        })
+      );
+      setCanvasBusinessBlock(nextBlock);
+      setCanvasLinkedMessageId(messageId);
+      canvasLinkedMessageIdRef.current = messageId;
+      setCanvasResearchBlock(null);
+      setCanvasCodeBlock(null);
+      setBusinessSimulateMessageId(null);
+      setCanvasView("business");
+      setLandingOpen(true);
+      setBusinessTabRequest((prev) => ({ id: prev.id + 1, tab: "financials" }));
+    },
+    [patchSessionMessages]
+  );
+
+  const runBusinessWebPageGenerate = useCallback(
+    async (messageId, userNotes = "") => {
+      const sid = activeSessionIdRef.current;
+      const block =
+        findBusinessSolutionBlock(sessionsRef.current, sid, messageId) || businessBlockCacheRef.current[messageId];
+      if (!block || !connected) return;
+      const ctx = buildBusinessWebPageContext(block, userNotes);
+      const titleHint =
+        (typeof block.query === "string" && block.query.trim().slice(0, 80)) || "Business intelligence report";
+      setLandingBusy(true);
+      try {
+        const result = await generatePage({
+          userId: session.userId,
+          source: "business_agent",
+          context: ctx,
+          title_hint: titleHint,
+        });
+        if (!result.ok) {
+          patchSessionMessages(sid, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ **Web page generation failed**\n\n${result.detail}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        const html = typeof result.html === "string" ? result.html : "";
+        const title =
+          typeof result.title === "string" && result.title.trim() ? result.title.trim() : titleHint;
+        const nextBlock = { ...block, type: "business_solution", canvas_html: html, _web_page_title: title };
+        businessBlockCacheRef.current[messageId] = nextBlock;
+        patchSessionMessages(sid, (msgs) =>
+          msgs.map((m) => {
+            if (m.id !== messageId) return m;
+            const blocks = (m.blocks || []).map((bb) =>
+              String(bb?.type || "").toLowerCase() === "business_solution" ? nextBlock : bb
+            );
+            return { ...m, blocks };
+          })
+        );
+        setCanvasBusinessBlock(nextBlock);
+        setCanvasLinkedMessageId(messageId);
+        canvasLinkedMessageIdRef.current = messageId;
+        setCanvasResearchBlock(null);
+        setCanvasCodeBlock(null);
+        setCanvasView("business");
+        setLandingOpen(true);
+        setBusinessTabRequest((prev) => ({ id: prev.id + 1, tab: "page" }));
+      } catch {
+        patchSessionMessages(sid, (m) => [
+          ...m,
+          {
+            id: makeMessageId(),
+            role: "assistant",
+            content: "⚠️ **Web page generation** — could not reach the server.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setLandingBusy(false);
+      }
+    },
+    [connected, patchSessionMessages, session.userId]
+  );
+
+  const handleBusinessShare = useCallback(async () => {
+    const mid = canvasLinkedMessageIdRef.current;
+    const sid = activeSessionIdRef.current;
+    const block =
+      findBusinessSolutionBlock(sessionsRef.current, sid, mid) || businessBlockCacheRef.current[mid];
+    if (!block) return undefined;
+    const html = buildFullBusinessReportHtml(block);
+    const title =
+      (typeof block.query === "string" && block.query.trim().slice(0, 80)) || "Business Agent · Business report";
+    const result = await publishPage({ userId: session.userId, title, html });
+    if (!result.ok) {
+      patchSessionMessages(activeSessionIdRef.current, (m) => [
+        ...m,
+        {
+          id: makeMessageId(),
+          role: "assistant",
+          content: `⚠️ **Publish failed**\n\n${result.detail}`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      return undefined;
+    }
+    const url = result.share_url || "";
+    if (url) setBusinessCanvasShareUrl(url);
+    return url || undefined;
+  }, [patchSessionMessages, session.userId]);
+
+  const handleBusinessCanvasRevision = useCallback(
+    async (revisionNotes) => {
+      const notes = (revisionNotes || "").trim();
+      if (!notes || !connected) return;
+      const mid = canvasLinkedMessageIdRef.current;
+      const sid = activeSessionIdRef.current;
+      let block =
+        findBusinessSolutionBlock(sessionsRef.current, sid, mid) || businessBlockCacheRef.current[mid];
+      if (!block) return;
+      const prev = buildFullBusinessReportHtml(block);
+      const ctx = buildWorkspaceExport({
+        messages: sessionsRef.current.find((x) => x.id === sid)?.messages || [],
+        thoughtLog: thoughtLogRef.current,
+        fileAnalystContext: fileAnalystContextRef.current,
+      });
+      const titleHint =
+        (typeof block.query === "string" && block.query.trim().slice(0, 80)) || "Business intelligence report";
+      setLandingBusy(true);
+      try {
+        const result = await generatePage({
+          userId: session.userId,
+          source: "business_agent",
+          context: ctx,
+          title_hint: titleHint,
+          existing_html: prev,
+          revision_notes: notes,
+        });
+        if (!result.ok) {
+          patchSessionMessages(sid, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ **Canvas revision failed**\n\n${result.detail}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        const nextHtml = typeof result.html === "string" && result.html.trim() ? result.html : prev;
+        const nextTitle =
+          typeof result.title === "string" && result.title.trim() ? result.title.trim() : titleHint;
+        const nextBlock = {
+          ...block,
+          type: "business_solution",
+          canvas_html: nextHtml,
+          _web_page_title: nextTitle,
+        };
+        businessBlockCacheRef.current[mid] = nextBlock;
+        patchSessionMessages(sid, (msgs) =>
+          msgs.map((m) => {
+            if (m.id !== mid) return m;
+            const blocks = (m.blocks || []).map((bb) =>
+              String(bb?.type || "").toLowerCase() === "business_solution" ? nextBlock : bb
+            );
+            return { ...m, blocks };
+          })
+        );
+        setCanvasBusinessBlock(nextBlock);
+        setBusinessTabRequest((prev) => ({ id: prev.id + 1, tab: "page" }));
+      } catch {
+        patchSessionMessages(sid, (m) => [
+          ...m,
+          {
+            id: makeMessageId(),
+            role: "assistant",
+            content: "⚠️ **Canvas revision** — could not reach the server.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setLandingBusy(false);
+      }
+    },
+    [connected, patchSessionMessages, session.userId]
+  );
+
+  const handleBusinessAction = useCallback(
+    ({ action, messageId, context }) => {
+      if (!messageId) return;
+      const ctx = typeof context === "string" ? context.trim() : "";
+      const extras = ctx ? { _action_user_notes: ctx } : {};
+      if (action === "simulate") {
+        setBusinessSimulateNotes(ctx);
+        setBusinessSimulateMessageId(messageId);
+        return;
+      }
+      if (action === "web_page") {
+        void runBusinessWebPageGenerate(messageId, ctx);
+        return;
+      }
+      const tabMap = { open: "overview", radar: "radar", swot: "swot", tax: "financials" };
+      const tab = tabMap[action] || "overview";
+      openBusinessPack(messageId, tab, extras);
+    },
+    [openBusinessPack, runBusinessWebPageGenerate]
   );
 
   const invalidateResearchPageCache = useCallback(() => {
@@ -2982,6 +3446,7 @@ export function App() {
           setCanvasView("landing");
           setCanvasResearchBlock(null);
           setCanvasCodeBlock(null);
+          setCanvasBusinessBlock(null);
           setCanvasLinkedMessageId(mid);
           canvasLinkedMessageIdRef.current = mid;
           setLandingState({ html: hit.html, title: hit.title || titleHint, lastShareUrl: "" });
@@ -2997,6 +3462,7 @@ export function App() {
       setCanvasView("landing");
       setCanvasResearchBlock(null);
       setCanvasCodeBlock(null);
+      setCanvasBusinessBlock(null);
       setCanvasLinkedMessageId(mid);
       canvasLinkedMessageIdRef.current = mid;
       setLandingState({ html: "", title: titleHint, lastShareUrl: "" });
@@ -3123,6 +3589,7 @@ export function App() {
           setCanvasView("landing");
           setCanvasResearchBlock(null);
           setCanvasCodeBlock(null);
+          setCanvasBusinessBlock(null);
           setCanvasLinkedMessageId(mid);
           canvasLinkedMessageIdRef.current = mid;
           setLandingState({ html: hit.html, title: hit.title || titleHint, lastShareUrl: "" });
@@ -3138,6 +3605,7 @@ export function App() {
       setCanvasView("landing");
       setCanvasResearchBlock(null);
       setCanvasCodeBlock(null);
+      setCanvasBusinessBlock(null);
       setCanvasLinkedMessageId(mid);
       canvasLinkedMessageIdRef.current = mid;
       setLandingState({ html: "", title: titleHint, lastShareUrl: "" });
@@ -3520,6 +3988,7 @@ export function App() {
           canvasLinkedMessageIdRef.current = null;
           setCanvasResearchBlock(null);
           setCanvasCodeBlock(null);
+          setCanvasBusinessBlock(null);
           setLandingState({ html: hit.html, title: hit.title || titleHint, lastShareUrl: "" });
           setLandingOpen(true);
           setLandingBusy(false);
@@ -3535,6 +4004,7 @@ export function App() {
       canvasLinkedMessageIdRef.current = null;
       setCanvasResearchBlock(null);
       setCanvasCodeBlock(null);
+      setCanvasBusinessBlock(null);
       setLandingState({ html: "", title: titleHint, lastShareUrl: "" });
       setLandingOpen(true);
       setLandingBusy(true);
@@ -3637,44 +4107,26 @@ export function App() {
   const handleLandingShare = useCallback(async () => {
     const { html, title } = landingStateRef.current;
     if (!html?.trim()) return undefined;
-    const base = backendHttpBase().replace(/\/$/, "");
-    try {
-      const r = await fetch(`${base}/api/pages/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: session.userId,
-          title: title || "Tunde Report",
-          html,
-        }),
-      });
-      const raw = await r.text();
-      if (!r.ok) {
-        let detail = raw.slice(0, 300);
-        try {
-          const ej = JSON.parse(raw);
-          if (ej && typeof ej.detail === "string") detail = ej.detail;
-        } catch {
-          /* ignore */
-        }
-        patchSessionMessages(activeSessionIdRef.current, (m) => [
-          ...m,
-          {
-            id: makeMessageId(),
-            role: "assistant",
-            content: `⚠️ **Publish failed**\n\n${detail}`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-        return undefined;
-      }
-      const j = JSON.parse(raw);
-      const url = typeof j.share_url === "string" ? j.share_url : "";
-      if (url) setLandingState((s) => ({ ...s, lastShareUrl: url }));
-      return url || undefined;
-    } catch {
+    const result = await publishPage({
+      userId: session.userId,
+      title: title || "Tunde Report",
+      html,
+    });
+    if (!result.ok) {
+      patchSessionMessages(activeSessionIdRef.current, (m) => [
+        ...m,
+        {
+          id: makeMessageId(),
+          role: "assistant",
+          content: `⚠️ **Publish failed**\n\n${result.detail}`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
       return undefined;
     }
+    const url = result.share_url || "";
+    if (url) setLandingState((s) => ({ ...s, lastShareUrl: url }));
+    return url || undefined;
   }, [patchSessionMessages, session.userId]);
 
   const handleLandingRevision = useCallback(
@@ -3689,45 +4141,31 @@ export function App() {
         fileAnalystContext: fileAnalystContextRef.current,
       });
       setLandingBusy(true);
-      const base = backendHttpBase().replace(/\/$/, "");
       try {
-        const r = await fetch(`${base}/api/pages/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: session.userId,
-            source: "workspace",
-            context: ctx,
-            title_hint: landingStateRef.current.title,
-            existing_html: prev,
-            revision_notes: notes,
-          }),
+        const gen = await generatePage({
+          userId: session.userId,
+          source: "workspace",
+          context: ctx,
+          title_hint: landingStateRef.current.title,
+          existing_html: prev,
+          revision_notes: notes,
         });
-        const raw = await r.text();
-        if (!r.ok) {
-          let detail = raw.slice(0, 400);
-          try {
-            const ej = JSON.parse(raw);
-            if (ej && typeof ej.detail === "string") detail = ej.detail;
-          } catch {
-            /* ignore */
-          }
+        if (!gen.ok) {
           patchSessionMessages(activeSessionIdRef.current, (m) => [
             ...m,
             {
               id: makeMessageId(),
               role: "assistant",
-              content: `⚠️ **Page revision failed**\n\n${detail}`,
+              content: `⚠️ **Page revision failed**\n\n${gen.detail}`,
               timestamp: new Date().toISOString(),
             },
           ]);
           return;
         }
-        const data = JSON.parse(raw);
-        const nextHtml = data.html || prev;
+        const nextHtml = gen.html || prev;
         const nextTitle =
-          typeof data.title === "string" && data.title.trim()
-            ? data.title.trim()
+          typeof gen.title === "string" && gen.title.trim()
+            ? gen.title.trim()
             : landingStateRef.current.title;
         landingPendingFullHtmlRef.current = nextHtml;
         const linked = canvasLinkedMessageIdRef.current;
@@ -3741,7 +4179,7 @@ export function App() {
         setLandingBusy(false);
         setLandingState((s) => ({
           ...s,
-          title: data.title || s.title,
+          title: gen.title || s.title,
           html: "",
         }));
         setLandingStreamTick((t) => t + 1);
@@ -3837,6 +4275,10 @@ export function App() {
     canvasLinkedMessageIdRef.current = null;
     setCanvasResearchBlock(null);
     setCanvasCodeBlock(null);
+    setCanvasBusinessBlock(null);
+    setBusinessCanvasShareUrl("");
+    setBusinessSimulateMessageId(null);
+    setBusinessSimulateNotes("");
     canvasGeneratedHtmlRef.current = {};
     landingPageVariantRef.current = "workspace";
     lastDataExportRef.current = null;
@@ -3877,6 +4319,7 @@ export function App() {
     canvasLinkedMessageIdRef.current = null;
     setCanvasResearchBlock(null);
     setCanvasCodeBlock(null);
+    setCanvasBusinessBlock(null);
     canvasGeneratedHtmlRef.current = {};
     landingPageVariantRef.current = "workspace";
     lastDataExportRef.current = null;
@@ -4019,6 +4462,7 @@ export function App() {
                         const hasCanvasContent =
                           Boolean(canvasResearchBlock) ||
                           Boolean(canvasCodeBlock) ||
+                          Boolean(canvasBusinessBlock) ||
                           Boolean((st.html || "").trim()) ||
                           Boolean((landingPendingFullHtmlRef.current || "").trim());
                         if (hasCanvasContent) setLandingOpen(true);
@@ -4039,6 +4483,7 @@ export function App() {
                     onCodeSolve={submitCodeQuestion}
                     onTranslationSolve={submitTranslation}
                     onResearchSolve={submitResearchQuestion}
+                    onBusinessSolve={submitBusinessQuestion}
                     onStudySolve={submitStudyTopic}
                     onDocumentWriterSolve={submitDocumentRequest}
                     onDataAnalystSolve={submitDataAnalysis}
@@ -4047,9 +4492,23 @@ export function App() {
                     onCanvasCardOpen={onCanvasCardOpen}
                     onDataAnalystFollowUp={handleDataAnalystFollowUp}
                     onRetryLastPrompt={retryLastUserPrompt}
+                    onBusinessAction={handleBusinessAction}
                   />
                 </div>
-                {landingOpen ? (
+                {landingOpen && canvasView === "business" ? (
+                  <BusinessAnalysisCanvas
+                    ref={canvasPanelRef}
+                    open={landingOpen}
+                    businessBlock={canvasBusinessBlock}
+                    tabRequest={businessTabRequest}
+                    onClose={closeCanvasPanel}
+                    busy={landingBusy}
+                    shareUrl={businessCanvasShareUrl}
+                    onShare={handleBusinessShare}
+                    onApplyRevision={handleBusinessCanvasRevision}
+                  />
+                ) : null}
+                {landingOpen && canvasView !== "business" ? (
                   <LandingCanvasPanel
                     ref={canvasPanelRef}
                     open={landingOpen}
@@ -4078,6 +4537,20 @@ export function App() {
           )}
         </div>
       </div>
+
+      <BusinessSimulateModal
+        open={Boolean(businessSimulateMessageId)}
+        messageId={businessSimulateMessageId}
+        sessionNotes={businessSimulateNotes}
+        onClose={() => {
+          setBusinessSimulateMessageId(null);
+          setBusinessSimulateNotes("");
+        }}
+        backendBase={backendHttpBase()}
+        onApplied={(data, mid) => {
+          if (mid) applyBusinessSimulation(mid, data);
+        }}
+      />
 
       <TundeHub
         open={tundeHubOpen}

@@ -60,6 +60,7 @@ def init_db() -> None:
     from tunde_webapp_backend.app.models.user_integration import UserIntegration  # noqa: F401
     from tunde_webapp_backend.app.models.tool_result import ToolResult  # noqa: F401
     from tunde_webapp_backend.app.models.canvas_page import CanvasPage  # noqa: F401
+    from tunde_webapp_backend.app.models.business_research import BusinessResearch  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 

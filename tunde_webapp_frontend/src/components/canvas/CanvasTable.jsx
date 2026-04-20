@@ -24,6 +24,7 @@ export default function CanvasTable({
   title,
   subtitle = "Table",
   delayMs = 0,
+  highlightMetrics = false,
 }) {
   const csvBlobUrl = useMemo(() => {
     if (!Array.isArray(headers) || !Array.isArray(rows)) return null;
@@ -64,6 +65,65 @@ export default function CanvasTable({
   }, [csvBlobUrl]);
 
   if (!Array.isArray(headers) || !Array.isArray(rows)) return null;
+
+  const renderMetricText = useCallback(
+    (text, keyBase) => {
+      const s = String(text ?? "");
+      if (!highlightMetrics || !s) return <span className="block whitespace-pre-wrap break-words">{s}</span>;
+
+      const re =
+        /\[[^\]]*\]|\([^)]*\)|\bQ[1-4]\b|\b(?:EBITDA|TAM|SAM|SOM|YoY|CAGR|ROAS|ROIC|ROI|MCap|ARR|MRR|GMV|EBIT|COGS|OPEX|CAPEX|P\/E|EV\/EBITDA|B2B|B2C)\b|([$€£₦])?\b-?\d[\d,]*(?:\.\d+)?%?\b|[~/%$€£₦]/g;
+      const parts = [];
+      let last = 0;
+      let m;
+      let k = 0;
+      while ((m = re.exec(s)) !== null) {
+        const start = m.index;
+        const end = re.lastIndex;
+        if (start > last) {
+          parts.push(
+            <span key={`${keyBase}-t-${k++}`} className="text-slate-200/95">
+              {s.slice(last, start)}
+            </span>
+          );
+        }
+        const token = s.slice(start, end);
+        const isBracket = token.startsWith("[") && token.endsWith("]");
+        const isParen = token.startsWith("(") && token.endsWith(")");
+        const isQuarter = /^Q[1-4]$/.test(token);
+        const isBizAcronym =
+          /^(?:EBITDA|TAM|SAM|SOM|YoY|CAGR|ROAS|ROIC|ROI|MCap|ARR|MRR|GMV|EBIT|COGS|OPEX|CAPEX|P\/E|EV\/EBITDA|B2B|B2C)$/i.test(
+            token
+          );
+        const isNumberLike = /([$€£₦])?\b-?\d/.test(token);
+        const isPercent = isNumberLike && token.includes("%");
+        const cls = isBracket || isParen || isBizAcronym
+          ? "rounded-md bg-indigo-500/10 px-1 py-[1px] text-indigo-200 ring-1 ring-indigo-400/20"
+          : isQuarter
+            ? "text-cyan-300 font-semibold"
+            : isPercent
+              ? "text-emerald-300 font-semibold"
+              : isNumberLike
+                ? "text-amber-300 font-semibold"
+                : "text-amber-200 font-semibold";
+        parts.push(
+          <span key={`${keyBase}-h-${k++}`} className={cls} style={{ fontVariantNumeric: "tabular-nums" }}>
+            {token}
+          </span>
+        );
+        last = end;
+      }
+      if (last < s.length) {
+        parts.push(
+          <span key={`${keyBase}-t-${k++}`} className="text-slate-200/95">
+            {s.slice(last)}
+          </span>
+        );
+      }
+      return <span className="block whitespace-pre-wrap break-words">{parts}</span>;
+    },
+    [highlightMetrics]
+  );
 
   return (
     <div
@@ -134,7 +194,7 @@ export default function CanvasTable({
                     key={ci}
                     className="border-r border-slate-800/50 px-3 py-2.5 align-top text-[0.8125rem] text-slate-200/95 last:border-r-0 sm:text-sm"
                   >
-                    <span className="block whitespace-pre-wrap break-words">{c}</span>
+                    {renderMetricText(c, `cell-${ri}-${ci}`)}
                   </td>
                 ))}
               </tr>

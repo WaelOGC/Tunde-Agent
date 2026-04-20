@@ -5,7 +5,7 @@
 **Status:** Active Development (Pre-Release)  
 **Legend:** ✅ Done | ⚠️ Bugs/Partial | ⏳ Planned | ❌ Not Started  
 
-**Recent session (2026-04-20):** **Fixes:** (1) Tool outputs no longer mirror into every chat — `patchSessionMessages` in `App.jsx` now respects **`activeSessionIdRef.current`** together with `sessionId`. (2) **Business Agent** label — user-facing copy in `ChatCenter.jsx`, `App.jsx`, `BusinessAnalysisCanvas.jsx`, `BusinessSimulateModal.jsx`, `businessReportHtml.js`, and `canvasExportCore.js` says **Business Agent**; **`TundeHub.jsx`** still uses **Tunde Agent** as the product name. **Also this session:** Business Agent first slice (routes `/tools/business/*`, model `business_research`, `/db/business-research*`, Canvas + chat — bundle before ship). Document Writer markdown path touched. Removed `main.py` OAuth client id debug print.
+**Recent session (2026-04-20):** **Fixes:** (1) Tool outputs no longer mirror into every chat — `patchSessionMessages` in `App.jsx` now respects **`activeSessionIdRef.current`** together with `sessionId`. (2) **Business Agent** label — user-facing copy in `ChatCenter.jsx`, `App.jsx`, `BusinessAnalysisCanvas.jsx`, `BusinessSimulateModal.jsx`, `businessReportHtml.js`, and `canvasExportCore.js` says **Business Agent**; **`TundeHub.jsx`** still uses **Tunde Agent** as the product name. **Also this session:** Business Agent first slice (routes `/tools/business/*`, model `business_research`, `/db/business-research*`, Canvas + chat — bundle before ship). **Document Writer (2026-04-20):** section tabs (`DOCUMENT_SECTION_SPLIT`), scroll reset (`docBodyScrollRef` / `useLayoutEffect`), duplicate-tab merge/dedupe, `stripLeadingDuplicateDocTitle`, GFM tables (`document_writer.py` prompt + `DocumentWriterMarkdownTable` / `segmentDocumentWriterMarkdown` in `ChatCenter.jsx`). Removed `main.py` OAuth client id debug print.
 
 ---
 
@@ -513,7 +513,7 @@ Production (Docker):
 | Data Analyst Ph.1 | ✅ | ✅ | ✅ | Export Canvas ✅ | ✅ Done |
 | Data Analyst Ph.2 | ✅ | ✅ | ✅ | Charts + Follow-up ✅ | ✅ Done |
 | Data Analyst Ph.3 | ❌ | ❌ | ❌ | Google Drive/Gmail | ⏳ Planned |
-| Document Writer | ✅ | ✅ | ⚠️ | Export Canvas ✅ | ⚠️ Markdown fixes in QA |
+| Document Writer | ✅ | ✅ | ✅ | Export Canvas ✅ | ✅ Done |
 
 ### Business & roadmap tools
 
@@ -822,9 +822,15 @@ Auto-rotate: Yes, pauses on user interaction
 | Priority | Component | Issue |
 |----------|-----------|-------|
 | ✅ Fixed (2026-04-20) | `App.jsx` — session patch | Tool responses were applied to **all** sessions; **`patchSessionMessages`** now guards with **`activeSessionIdRef.current`** plus `sessionId` so only the active session updates. |
+| ✅ Fixed (2026-04-20) | `App.jsx` — `patchSessionMessages` operators | **`&&` vs `\|\|` bug:** using `\|\|` meant patches only applied when the session matched **both** `activeSessionIdRef.current` **and** `sessionId` — dropped patches on fast session switches. Fixed by switching to `&&` so a row is unchanged only when it matches **neither** (~line 810). Fixed: 2026-04-20. |
 | ✅ Fixed (2026-04-20) | Business Agent UI label | Tool/composer/canvas strings incorrectly showed **Tunde Agent**; fixed in `ChatCenter.jsx`, `App.jsx`, `BusinessAnalysisCanvas.jsx`, `BusinessSimulateModal.jsx`, `businessReportHtml.js`, `canvasExportCore.js` → **Business Agent**. **`TundeHub.jsx`** unchanged (product name). |
+| ✅ Fixed (2026-04-20) | Document Writer — section tabs (`ChatCenter.jsx`) | Heading split regex updated to handle all levels **`#`–`######`** (`DOCUMENT_SECTION_SPLIT`). |
+| ✅ Fixed (2026-04-20) | Document Writer — truncated content (`ChatCenter.jsx`) | Scroll anchor reset: **`docBodyScrollRef`**, **`useLayoutEffect`** (`scrollTop = 0`), **`overflowAnchor: none`**, in-container scroll for tabs. |
+| ✅ Fixed (2026-04-20) | Document Writer — duplicate tab (`ChatCenter.jsx`) | **`mergeAdjacentDuplicateHeadingParts`** + **`stripLeadingAtxLine`** + consecutive **nav** label dedupe. |
+| ✅ Fixed (2026-04-20) | Document Writer — raw `#` title (`ChatCenter.jsx`) | **`stripLeadingDuplicateDocTitle`** / **`bodyForDoc`** removes repeated title line. |
+| ✅ Fixed (2026-04-20) | Document Writer — tables | **`document_writer.py`** — GFM pipe tables in prompt; **`DocumentWriterMarkdownTable`**, **`segmentDocumentWriterMarkdown`** in **`ChatCenter.jsx`**. |
 | 🟢 Fixed (2026-04-20) | Backend startup | ~~`main.py` printed `GOOGLE_CLIENT_ID` to stdout~~ — removed; rotate OAuth client if logs were exposed |
-| 🟡 Med | Document Writer UI | Contrast / tables / markdown markers — **fixes landed in branch; full QA pending** |
+| 🟢 Low | Document Writer UI (optional) | Spot-check text contrast on light panels in edge-case themes |
 | 🟡 Med | Repo hygiene | Business Agent router + model + tool + frontend files must be **committed together** — partial commits break imports |
 | 🟡 Med | Live web search | Business (and research) enrichment needs `TAVILY_API_KEY` or `SERPER_API_KEY`; otherwise summaries may be LLM-only |
 | 🟡 Med | GitHub OAuth | End-to-end verification needed |

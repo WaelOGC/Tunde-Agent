@@ -1,10 +1,12 @@
 /**
- * Detect GitHub-style pipe tables in plain text and split into render segments.
- * Each table: header row + separator row (---) + body rows.
+ * Detect GitHub-style pipe tables and horizontal-rule placeholders in plain text.
+ * prepareAssistantMarkdown turns standalone "---" lines into "__HR__" tokens.
  */
 
+const HR_TOKEN = "__HR__";
+
 function trimLine(line) {
-  return (line || "").replace(/\r$/, "").trimEnd();
+  return String(line ?? "").replace(/\r$/, "").trimEnd();
 }
 
 function isPipeTableRow(line) {
@@ -14,13 +16,14 @@ function isPipeTableRow(line) {
   return pipes >= 2;
 }
 
+/** Separator row: every cell matches /^:?-+:?$/ (YAML-style alignment dashes). */
 function isSeparatorRow(line) {
   const s = trimLine(line);
-  if (!s.includes("-") && !s.includes(":")) return false;
+  if (!s.includes("|")) return false;
   const inner = s.replace(/^\|/, "").replace(/\|$/, "");
   const cells = inner.split("|").map((c) => c.trim());
   if (cells.length < 2) return false;
-  return cells.every((c) => /^:?-{2,}:?$/.test(c));
+  return cells.every((c) => /^:?-+:?$/.test(c));
 }
 
 function splitPipeRow(line) {
@@ -32,7 +35,6 @@ function splitPipeRow(line) {
 
 /**
  * Unwrap ```fenced``` regions that contain pipe tables so the table parser can see them.
- * Keeps non-table fences unchanged.
  */
 export function unwrapTableCodeFences(text) {
   const str = String(text ?? "");
@@ -46,17 +48,35 @@ export function unwrapTableCodeFences(text) {
 }
 
 /**
- * Strip a single leading HTML <table>...</table> into pipe-like lines is complex; skip for now.
- * Normalize Windows newlines.
+ * Normalize line endings, trim trailing whitespace per line, unwrap table fences,
+ * replace standalone markdown horizontal-rule lines with __HR__ (not pipe-table rows).
  */
 export function prepareAssistantMarkdown(text) {
-  let s = String(text ?? "").replace(/\r\n/g, "\n");
+  let s = String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   s = unwrapTableCodeFences(s);
-  return s;
+
+  const lines = s.split("\n");
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    line = line.replace(/\s+$/, "");
+    const trimmed = line.trim();
+    // Standalone --- ... (not a markdown pipe table row)
+    if (/^-{3,}$/.test(trimmed) && !trimmed.includes("|")) {
+      out.push(HR_TOKEN);
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
 }
 
 /**
- * @returns {Array<{ type: 'text', text: string } | { type: 'table', headers: string[], rows: string[][] }>}
+ * @returns {Array<
+ *   | { type: 'text', text: string }
+ *   | { type: 'table', headers: string[], rows: string[][] }
+ *   | { type: 'hr' }
+ * >}
  */
 export function segmentMarkdownPipeTables(text) {
   if (text == null || text === "") {
@@ -77,6 +97,15 @@ export function segmentMarkdownPipeTables(text) {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
+    const trimmed = trimLine(line).trim();
+
+    if (trimmed === HR_TOKEN) {
+      flushBuf();
+      segments.push({ type: "hr" });
+      i += 1;
+      continue;
+    }
+
     const next = i + 1 < lines.length ? lines[i + 1] : "";
 
     if (isPipeTableRow(line) && isSeparatorRow(next)) {
@@ -87,6 +116,8 @@ export function segmentMarkdownPipeTables(text) {
         i += 2;
         const rows = [];
         while (i < lines.length && isPipeTableRow(lines[i]) && !isSeparatorRow(lines[i])) {
+          const tln = trimLine(lines[i]).trim();
+          if (tln === HR_TOKEN) break;
           const r = splitPipeRow(lines[i]);
           if (r.length > 0) rows.push(r);
           i += 1;

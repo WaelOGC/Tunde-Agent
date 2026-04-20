@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskStatus(str, Enum):
@@ -44,4 +44,212 @@ class TaskSubmitResponse(BaseModel):
     task_id: uuid.UUID
     correlation_id: uuid.UUID
     status: TaskStatus
+
+
+class MathProblemRequest(BaseModel):
+    problem: str = Field(..., min_length=1, max_length=20000)
+
+
+class MathSolutionResponse(BaseModel):
+    steps: list[str] = Field(default_factory=list)
+    answer: str = ""
+    topic: str = "general"
+    confidence: str = "medium"
+
+
+class ScienceQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=20000)
+
+
+class ScienceAnswerResponse(BaseModel):
+    domain: str = "general"
+    explanation: str = ""
+    key_concepts: list[str] = Field(default_factory=list)
+    real_world_example: str = ""
+    further_reading: list[str] = Field(default_factory=list)
+    confidence: str = "medium"
+    is_debated: bool = False
+
+
+class ChemistryAtom(BaseModel):
+    element: str = "C"
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+
+
+class ChemistryMolecule(BaseModel):
+    name: str = ""
+    formula: str = ""
+    atoms: list[ChemistryAtom] = Field(default_factory=list)
+    bonds: list[list[int]] = Field(default_factory=list)
+
+
+class ChemistryQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=20000)
+
+
+class ChemistryAnswerResponse(BaseModel):
+    reaction_type: str = "general"
+    explanation: str = ""
+    balanced_equation: str = ""
+    molecules: list[ChemistryMolecule] = Field(default_factory=list)
+    hazard_level: str = "none"
+    hazard_warning: str = ""
+    safety_tips: list[str] = Field(default_factory=list)
+    confidence: str = "medium"
+
+
+class SpaceQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=20000)
+
+
+class SpaceAnswerResponse(BaseModel):
+    topic: str = "solar_system"
+    explanation: str = ""
+    key_facts: list[str] = Field(default_factory=list)
+    scale: str = ""
+    missions: list[str] = Field(default_factory=list)
+    confidence: str = "medium"
+    is_theoretical: bool = False
+    visualization: dict[str, Any] = Field(default_factory=dict)
+
+
+class HealthQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=20000)
+
+
+class HealthAnswerResponse(BaseModel):
+    category: str = "general"
+    explanation: str = ""
+    key_facts: list[str] = Field(default_factory=list)
+    when_to_see_doctor: str = ""
+    emergency_warning: bool = False
+    sources: list[str] = Field(default_factory=list)
+    confidence: str = "medium"
+    disclaimer: str = (
+        "This is educational information only. Always consult a qualified healthcare professional."
+    )
+
+
+class CodeQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=20000)
+
+
+class CodeAnswerResponse(BaseModel):
+    language: str = "plaintext"
+    task_type: str = "write"
+    code: str = ""
+    explanation: str = ""
+    complexity: str = ""
+    best_practices: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    confidence: str = "medium"
+
+
+class TranslationQuestionRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=50000)
+    target_language: str = Field(default="", max_length=120)
+
+
+class TranslationAnswerResponse(BaseModel):
+    source_language: str = ""
+    target_language: str = ""
+    original_text: str = ""
+    translated_text: str = ""
+    transliteration: str = ""
+    tone: str = "neutral"
+    confidence: str = "medium"
+    alternative_translations: list[str] = Field(default_factory=list)
+
+
+class ResearchSourceItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = ""
+    type: str = "web"
+    credibility: str = "medium"
+
+
+class ResearchQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=32000)
+
+
+class ResearchAnswerResponse(BaseModel):
+    topic: str = ""
+    summary: str = ""
+    key_findings: list[str] = Field(default_factory=list)
+    sources: list[ResearchSourceItem] = Field(default_factory=list)
+    citations: list[str] = Field(default_factory=list)
+    conflicting_views: list[str] = Field(default_factory=list)
+    confidence: str = "medium"
+    disclaimer: str = "Research is based on AI knowledge. Always verify with primary sources."
+
+
+class StudyQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=20000)
+
+
+class StudyAnswerResponse(BaseModel):
+    topic: str = ""
+    summary: str = ""
+    key_concepts: list[str] = Field(default_factory=list)
+    study_plan: list[str] = Field(default_factory=list)
+    memory_tips: list[str] = Field(default_factory=list)
+    practice_questions: list[str] = Field(default_factory=list)
+    practice_hints: list[str] = Field(default_factory=list)
+    difficulty_level: str = "intermediate"
+    estimated_time: str = ""
+    confidence: str = "medium"
+
+
+class DataAnalysisRequest(BaseModel):
+    data: str = Field(..., min_length=1, max_length=500_000)
+    dataset_name: str = Field(default="", max_length=512)
+
+
+class DataQualityReport(BaseModel):
+    score: str = "fair"
+    notes: str = ""
+
+
+class DataAnalysisResponse(BaseModel):
+    dataset_name: str = "Dataset"
+    row_count: int = 0
+    column_count: int = 0
+    columns: list[str] = Field(default_factory=list)
+    summary_stats: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    key_insights: list[str] = Field(default_factory=list)
+    ai_narrative: str = ""
+    smart_alerts: list[str] = Field(default_factory=list)
+    data_quality: DataQualityReport = Field(default_factory=DataQualityReport)
+    confidence: str = "medium"
+    chart_data: dict[str, Any] = Field(default_factory=dict)
+    trends: list[dict[str, Any]] = Field(default_factory=list)
+    predictions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DataFollowUpRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=8000)
+    original_data: str = Field(default="", max_length=500_000)
+    previous_analysis: dict[str, Any] = Field(default_factory=dict)
+
+
+class DataFollowUpResponse(BaseModel):
+    answer: str = ""
+
+
+class DocumentWriterRequest(BaseModel):
+    request: str = Field(..., min_length=1, max_length=32000)
+
+
+class DocumentAnswerResponse(BaseModel):
+    document_type: str = "other"
+    title: str = ""
+    content: str = ""
+    word_count: int = 0
+    tone: str = "formal"
+    language: str = "English"
+    sections: list[str] = Field(default_factory=list)
+    confidence: str = "medium"
 

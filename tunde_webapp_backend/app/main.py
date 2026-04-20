@@ -35,11 +35,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from tunde_webapp_backend.app.custom_logging import configure_structured_logging
 from tunde_webapp_backend.app.ws_router import router as ws_router
-from tunde_webapp_backend.app.task_router import router as task_router
+from tunde_webapp_backend.app.task_router import router as task_router, tools_router as tools_http_router
 from tunde_webapp_backend.app.file_router import router as file_router
 from tunde_webapp_backend.app.pages_router import api_router as pages_api_router
 from tunde_webapp_backend.app.pages_router import share_router as pages_share_router
 from tunde_webapp_backend.app.auth_router import router as auth_router
+from tunde_webapp_backend.app.db_router import router as db_router
 from tunde_webapp_backend.app.db import init_db
 from tunde_webapp_backend.app.seed_agents import seed_default_agents
 
@@ -84,10 +85,12 @@ def create_app() -> FastAPI:
 
     app.include_router(ws_router)
     app.include_router(task_router)
+    app.include_router(tools_http_router)
     app.include_router(file_router)
     app.include_router(pages_api_router)
     app.include_router(pages_share_router)
     app.include_router(auth_router)
+    app.include_router(db_router)
 
     logger.info("tunde backend initialized")
     return app

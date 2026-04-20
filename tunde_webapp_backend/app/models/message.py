@@ -27,6 +27,8 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)  # user | ceo
     content: Mapped[str] = mapped_column(Text, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    blocks_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     conversation = relationship(Conversation, lazy="joined")
 

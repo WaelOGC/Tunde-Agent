@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 function GearIcon({ className }) {
   return (
@@ -13,6 +13,73 @@ function GearIcon({ className }) {
   );
 }
 
+const GROUP_ORDER = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "week", label: "Last 7 days" },
+  { key: "older", label: "Older" },
+];
+
+function startOfLocalDay(ms) {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** @param {string | null} iso @param {boolean} isLocal */
+function bucketForSession(iso, isLocal) {
+  if (isLocal || !iso) return "today";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "older";
+  const now = Date.now();
+  const today0 = startOfLocalDay(now);
+  const y0 = startOfLocalDay(now - 86400000);
+  const weekStart = today0 - 7 * 86400000;
+  if (t >= today0) return "today";
+  if (t >= y0) return "yesterday";
+  if (t >= weekStart) return "week";
+  return "older";
+}
+
+function toolBadgeShort(tool) {
+  if (!tool || typeof tool !== "string") return "";
+  const t = tool.toLowerCase();
+  const map = {
+    math: "Math",
+    science: "Science",
+    chemistry: "Chem",
+    space: "Space",
+    health: "Health",
+    code: "Code",
+    translation: "Translate",
+    research: "Research",
+    study: "Study",
+    data_analyst: "Data",
+    ceo: "CEO",
+    landing: "Canvas",
+  };
+  return map[t] || tool.slice(0, 10);
+}
+
+/** @param {string | null} iso @param {boolean} isLocal */
+function formatWhen(iso, isLocal) {
+  if (isLocal) return "Now";
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = Date.now();
+  const today0 = startOfLocalDay(now);
+  const y0 = today0 - 86400000;
+  const t = d.getTime();
+  const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (t >= today0) return timeStr;
+  if (t >= y0) return `Yesterday · ${timeStr}`;
+  if (t >= today0 - 6 * 86400000) {
+    return `${d.toLocaleDateString(undefined, { weekday: "short" })} · ${timeStr}`;
+  }
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function WorkspaceSidebar({
   sessions,
   activeSessionId,
@@ -23,6 +90,28 @@ export default function WorkspaceSidebar({
   connected,
 }) {
   const [hoverId, setHoverId] = useState(null);
+
+  const sortedSessions = useMemo(() => {
+    const copy = [...(sessions || [])];
+    copy.sort((a, b) => {
+      if (a.isLocalDraft && !b.isLocalDraft) return -1;
+      if (!a.isLocalDraft && b.isLocalDraft) return 1;
+      const ta = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+      const tb = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+      return tb - ta;
+    });
+    return copy;
+  }, [sessions]);
+
+  const grouped = useMemo(() => {
+    /** @type {Record<string, typeof sortedSessions>} */
+    const g = { today: [], yesterday: [], week: [], older: [] };
+    for (const s of sortedSessions) {
+      const k = bucketForSession(s.startedAt, s.isLocalDraft);
+      g[k].push(s);
+    }
+    return g;
+  }, [sortedSessions]);
 
   return (
     <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-white/[0.06] bg-tunde-bg">
@@ -54,34 +143,56 @@ export default function WorkspaceSidebar({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <p className="px-2 pb-1.5 text-[11px] font-medium text-slate-600">Recent</p>
-        <ul className="space-y-0.5">
-          {sessions.map((s) => {
-            const active = s.id === activeSessionId;
-            const hovered = hoverId === s.id;
-            return (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelectSession(s.id)}
-                  onMouseEnter={() => setHoverId(s.id)}
-                  onMouseLeave={() => setHoverId(null)}
-                  className={[
-                    "flex w-full flex-col rounded-md px-2.5 py-2 text-left transition-colors",
-                    active
-                      ? "bg-white/[0.08] text-white"
-                      : hovered
-                        ? "bg-white/[0.04] text-slate-200"
-                        : "text-slate-500 hover:bg-white/[0.03] hover:text-slate-300",
-                  ].join(" ")}
-                >
-                  <span className="truncate text-[13px] font-medium leading-snug">{s.title}</span>
-                  <span className="truncate text-[11px] text-slate-600">{s.preview}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <p className="px-2 pb-1.5 text-[11px] font-medium text-slate-600">Chats</p>
+        {GROUP_ORDER.map(({ key, label }) => {
+          const list = grouped[key] || [];
+          if (!list.length) return null;
+          return (
+            <div key={key} className="mb-3">
+              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{label}</p>
+              <ul className="space-y-0.5">
+                {list.map((s) => {
+                  const active = s.id === activeSessionId;
+                  const hovered = hoverId === s.id;
+                  const badge = toolBadgeShort(s.toolUsed);
+                  return (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => void onSelectSession(s.id)}
+                        onMouseEnter={() => setHoverId(s.id)}
+                        onMouseLeave={() => setHoverId(null)}
+                        className={[
+                          "flex w-full flex-col rounded-md px-2.5 py-2 text-left transition-colors",
+                          active
+                            ? "bg-white/[0.08] text-white"
+                            : hovered
+                              ? "bg-white/[0.04] text-slate-200"
+                              : "text-slate-500 hover:bg-white/[0.03] hover:text-slate-300",
+                        ].join(" ")}
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-snug">{s.title}</span>
+                          {badge ? (
+                            <span className="shrink-0 rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-200/90">
+                              {badge}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-0.5 flex items-center justify-between gap-2">
+                          <span className="min-w-0 flex-1 truncate text-[11px] text-slate-600">{s.preview}</span>
+                          <span className="shrink-0 text-[10px] text-slate-600 tabular-nums">
+                            {formatWhen(s.startedAt, s.isLocalDraft)}
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
       </div>
 
       <div className="shrink-0 space-y-2 border-t border-white/[0.06] px-3 py-3">

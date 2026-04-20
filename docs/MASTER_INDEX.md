@@ -81,7 +81,13 @@ This `docs/` tree is organized for team collaboration and long-term scale. **All
 
 ---
 
-## 11 — Agent Army
+## 11 — Design Philosophy
+
+- [Futuristic Visuals — Year 2100](./09_design_philosophy/futuristic_visuals.md)
+
+---
+
+## 12 — Agent Army
 
 - [Agent Army overview](./07_agent_army/overview.md)
 

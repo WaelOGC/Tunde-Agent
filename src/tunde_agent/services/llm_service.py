@@ -24,8 +24,17 @@ class BaseLLM(ABC):
     """Minimal contract for chat completion."""
 
     @abstractmethod
-    def complete(self, system_prompt: str, user_message: str) -> str:
-        """Return assistant text for a single user turn."""
+    def complete(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        max_output_tokens: int | None = None,
+    ) -> str:
+        """Return assistant text for a single user turn.
+
+        ``max_output_tokens``: when set, caps generation length (Gemini ``maxOutputTokens``, DeepSeek ``max_tokens``).
+        """
 
 
 class GeminiClient(BaseLLM):
@@ -42,9 +51,15 @@ class GeminiClient(BaseLLM):
             m = m[len("models/") :]
         self._model_name = m
 
-    def complete(self, system_prompt: str, user_message: str) -> str:
+    def complete(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        max_output_tokens: int | None = None,
+    ) -> str:
         url = self._URL.format(model=self._model_name)
-        payload = {
+        payload: dict = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
             "contents": [
                 {
@@ -53,6 +68,8 @@ class GeminiClient(BaseLLM):
                 }
             ],
         }
+        if max_output_tokens is not None and max_output_tokens > 0:
+            payload["generationConfig"] = {"maxOutputTokens": int(max_output_tokens)}
         try:
             with httpx.Client(timeout=120.0) as client:
                 r = client.post(
@@ -159,14 +176,22 @@ class DeepSeekClient(BaseLLM):
         self._model = model
         self._base_url = base_url.rstrip("/")
 
-    def complete(self, system_prompt: str, user_message: str) -> str:
-        payload = {
+    def complete(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        max_output_tokens: int | None = None,
+    ) -> str:
+        payload: dict = {
             "model": self._model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
         }
+        if max_output_tokens is not None and max_output_tokens > 0:
+            payload["max_tokens"] = int(max_output_tokens)
         try:
             with httpx.Client(timeout=120.0) as client:
                 r = client.post(

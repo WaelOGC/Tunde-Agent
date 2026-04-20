@@ -7,8 +7,8 @@ Policy (override by extending ``TaskKind`` and ``resolve_llm_client`` when addin
 - **Structured JSON** (extractor, verifier, chart designer JSON) → DeepSeek when configured (strong
   instruction-following for JSON); else Gemini.
 - **Orchestration JSON** (master plan / gate) → DeepSeek when configured; else Gemini.
-- **Research synthesis & creative UI** (analyst prose, custom landing HTML) → Gemini when configured;
-  else DeepSeek.
+- **Research synthesis, creative UI & general chat-style generation** (analyst prose, custom landing
+  HTML, canvas HTML) → Gemini when configured; else DeepSeek.
 
 Adding a provider: implement ``BaseLLM`` in ``llm_service.py``, extend ``resolve_llm_client``, and keep
 call sites on ``TaskKind`` — core orchestration stays unchanged.
@@ -29,6 +29,7 @@ class TaskKind(StrEnum):
     STRUCTURED_JSON = "structured_json"
     ORCHESTRATION_JSON = "orchestration_json"
     CREATIVE_UI = "creative_ui"
+    CHAT = "chat"
     VISION = "vision"
 
 
@@ -54,7 +55,7 @@ def resolve_llm_client(settings: Settings, kind: TaskKind | str) -> BaseLLM:
             return build_llm_client(settings, "gemini")
         raise LLMError("No LLM API key configured (need DEEPSEEK_API_KEY or GEMINI_API_KEY).")
 
-    if k in (TaskKind.RESEARCH_SYNTHESIS, TaskKind.CREATIVE_UI):
+    if k in (TaskKind.RESEARCH_SYNTHESIS, TaskKind.CREATIVE_UI, TaskKind.CHAT):
         if has_gemini:
             return build_llm_client(settings, "gemini")
         if has_deepseek:

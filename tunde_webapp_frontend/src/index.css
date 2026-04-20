@@ -15,65 +15,85 @@
 }
 
 /*
- * Chat assistant Markdown headings — force colors over bubble `text-slate-*` / inheritance.
- * Vibrant cyan + neon green; !important beats Tailwind utilities on ancestors.
+ * Chat assistant Markdown headings (dark bubbles). Readable white hierarchy — not document paper.
  */
 @layer components {
-  .assistant-rich h1 {
-    color: #00ffff !important;
+  .assistant-rich:not(.document-paper) h1 {
+    color: #ffffff !important;
     font-weight: 700 !important;
-    font-size: 1.625rem !important;
-    line-height: 1.25;
-    letter-spacing: -0.02em;
-    margin-top: 1.25rem;
-    margin-bottom: 0.5rem;
-    text-shadow: 0 0 24px rgba(0, 255, 255, 0.18);
-  }
-
-  .assistant-rich h1:first-child {
-    margin-top: 0;
-  }
-
-  .assistant-rich h2 {
-    color: #39ff14 !important;
-    font-weight: 700 !important;
-    font-size: 1.5rem !important;
-    line-height: 1.3;
+    font-size: 1.875rem !important;
+    line-height: 1.25 !important;
     letter-spacing: -0.02em;
     margin-top: 1.5rem;
     margin-bottom: 0.5rem;
-    text-shadow: 0 0 22px rgba(57, 255, 20, 0.14);
+    text-shadow: none !important;
   }
 
-  .assistant-rich h2:first-child {
+  .assistant-rich:not(.document-paper) h1:first-child {
     margin-top: 0;
   }
 
-  .assistant-rich h3 {
-    color: #00ffff !important;
-    font-weight: 700 !important;
-    font-size: 1.3125rem !important;
-    line-height: 1.35;
-    letter-spacing: -0.015em;
+  .assistant-rich:not(.document-paper) h2 {
+    color: rgba(255, 255, 255, 0.88) !important;
+    font-weight: 600 !important;
+    font-size: 1.25rem !important;
+    line-height: 1.35 !important;
+    letter-spacing: -0.02em;
     margin-top: 1.25rem;
     margin-bottom: 0.5rem;
-    text-shadow: 0 0 18px rgba(0, 255, 255, 0.14);
+    text-shadow: none !important;
   }
 
-  .assistant-rich h3:first-child {
+  .assistant-rich:not(.document-paper) h2:first-child {
+    margin-top: 0;
+  }
+
+  .assistant-rich:not(.document-paper) h3 {
+    color: rgba(255, 255, 255, 0.78) !important;
+    font-weight: 600 !important;
+    font-size: 1rem !important;
+    line-height: 1.45 !important;
+    letter-spacing: -0.015em;
+    margin-top: 1rem;
+    margin-bottom: 0.35rem;
+    text-shadow: none !important;
+  }
+
+  .assistant-rich:not(.document-paper) h3:first-child {
     margin-top: 0;
   }
 
   @media (min-width: 640px) {
-    .assistant-rich h1 {
-      font-size: 1.875rem !important;
+    .assistant-rich:not(.document-paper) h1 {
+      font-size: 2rem !important;
     }
-    .assistant-rich h2 {
-      font-size: 1.625rem !important;
+    .assistant-rich:not(.document-paper) h2 {
+      font-size: 1.375rem !important;
     }
-    .assistant-rich h3 {
-      font-size: 1.4375rem !important;
-    }
+  }
+
+  /*
+   * Document Writer “paper” mode — overrides neon chat heading styles above.
+   */
+  .assistant-rich.document-paper h1,
+  .assistant-rich.document-paper h2,
+  .assistant-rich.document-paper h3 {
+    color: #111111 !important;
+    text-shadow: none !important;
+    font-weight: 700 !important;
+  }
+
+  .assistant-rich.document-paper p,
+  .assistant-rich.document-paper li {
+    color: #1c1c1e !important;
+  }
+
+  .assistant-rich.document-paper strong {
+    color: #111111 !important;
+  }
+
+  .assistant-rich.document-paper em {
+    color: #1c1c1e !important;
   }
 }
 

@@ -9,26 +9,77 @@ logger = logging.getLogger(__name__)
 
 _MAX_CONTEXT_CHARS = 28_000
 
-_LANDING_SYSTEM = """You are a senior product designer and front-end engineer for **Tunde** (research & analysis workspace).
+_LANDING_SYSTEM = """You are a world-class product designer and senior front-end engineer for Tunde (AI research & analysis workspace). Your output must rival the quality of top-tier SaaS dashboards like Linear, Vercel, or Notion.
 
-Output **one complete HTML5 document only** (no markdown, no code fences, no preamble).
+Output ONE complete HTML5 document ONLY. No markdown, no code fences, no explanation.
 
-Requirements:
-- **Head:** `<meta charset="utf-8">`, viewport meta, concise `<title>`.
-- **Typography:** Load **Inter** (and optionally Roboto) from Google Fonts; set `font-family: 'Inter', 'Roboto', system-ui, sans-serif` on `body`.
-- **Styling:** `<script src="https://cdn.tailwindcss.com"></script>` for utility classes.
-- **Icons:** Load Lucide UMD, then call `lucide.createIcons()` once after DOM ready (e.g. `DOMContentLoaded`). Use `<i data-lucide="...">` for 4–8 meaningful icons (hero, sections, bullets) — not decoration spam.
-- **Visual language — premium Tunde dark:** Default **dark mode**: `bg-slate-950` / `bg-slate-900`, **high contrast** text (`text-slate-100`, muted `text-slate-400`). Use **glassmorphism** on key surfaces: `backdrop-blur-xl`, semi-transparent backgrounds (`bg-slate-900/60`, `border border-white/10` or `border-slate-700/80`), soft inner highlights. **Clean borders** and rounded-2xl cards; restrained **sky** / **emerald** accents (no rainbow).
-- **Layout (semantic HTML):**
-  1) `<header>` — **Hero**: large `h1`, supporting line, pill badge “Tunde Report”, optional subtle gradient or radial glow **behind** glass panels (CSS only).
-  2) `<main>` — **Synthesized** sections (not a wall of quoted context). Write as a polished briefing: executive tone, scannable.
-     - **At a glance** — 3 short glass **stat or insight cards** (numbers only if present in source).
-     - **Key findings** — tight bullets with Lucide icons where helpful.
-     - **Evidence / data** — if the source has tables or metrics, one **HTML table** or **CSS-only bar chart** (flex + height %; no chart libraries).
-     - **Recommendations or caveats** — only if grounded in the source; otherwise a brief **Gaps** note.
-  3) `<footer>` — muted “Published with Tunde”.
-- **Content rules:** **Synthesize** the user’s material into clear narratives and headings. Do **not** dump raw chat logs, long quotes, or repetitive lists. Do **not** invent numbers or facts. If something is unknown, state uncertainty briefly in a callout.
-- **Safety:** Allowed remote assets only: Tailwind CDN, Google Fonts stylesheets, Lucide UMD. No other scripts, no iframes, no fetch/XHR. No provider or model names in visible copy.
+MANDATORY TECHNICAL SETUP (include ALL of these):
+- <meta charset="utf-8"> and viewport meta
+- Google Fonts Inter: <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+- Tailwind CSS: <script src="https://cdn.tailwindcss.com"></script>
+- Chart.js: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+- Lucide icons: <script src="https://unpkg.com/lucide@0.447.0/dist/umd/lucide.min.js"></script>
+- Body font: font-family: 'Inter', system-ui, sans-serif
+
+MANDATORY STRUCTURE:
+1. STICKY NAVIGATION BAR
+   - Logo "Tunde" on left
+   - 3-5 tab links on right (one per major section)
+   - Dark background, blur backdrop
+   - onclick smooth scroll ONLY: onclick="document.getElementById('id').scrollIntoView({behavior:'smooth'})"
+
+2. HERO SECTION
+   - Large bold title (H1, 3-4rem)
+   - Subtitle paragraph
+   - "Tunde Report" pill badge
+   - Dark gradient background (slate-950 to slate-900)
+
+3. AT A GLANCE — 3 KPI CARDS
+   - Extract real numbers from source material
+   - Large number (2-3rem, colored: sky/emerald/violet)
+   - Label below
+   - Glassmorphism cards: bg-slate-900/60, backdrop-blur, border border-white/10
+
+4. MAIN CONTENT SECTIONS (2-4 sections based on content)
+   - Each section has: clear H2 heading with Lucide icon, descriptive paragraph, relevant content
+   - Alternate between: findings list, data table, chart, comparison cards
+
+5. MANDATORY CHART.JS VISUALIZATION
+   - Include AT LEAST ONE Chart.js chart (bar, line, or radar)
+   - Use REAL data from the source material
+   - Initialize inside: window.addEventListener('load', function() { ... })
+   - Dark chart theme: backgroundColor with transparency, white labels
+
+6. DATA TABLE (if source has tabular data)
+   - Clean HTML table with dark theme
+   - Alternating row colors
+   - Highlighted important values (red for negative, green for positive)
+
+7. FOOTER
+   - "Published with Tunde © 2026"
+   - Muted slate-500 text
+
+DESIGN RULES — STRICTLY FOLLOW:
+- Color palette: slate-950/900/800 backgrounds, sky-400/emerald-400/violet-400 accents
+- Cards: rounded-2xl, border border-white/10, bg-slate-900/60, backdrop-blur-xl, shadow-2xl
+- Typography: H1=3rem/800weight, H2=1.5rem/700, body=1rem/400, muted=slate-400
+- Spacing: generous padding (py-20 for sections, p-8 for cards)
+- NEVER use Markdown syntax (**bold**) — use <strong> and <em> HTML tags
+- NEVER use href="#" for navigation — use onclick scrollIntoView only
+- NEVER load external images — use CSS gradients and unicode emoji instead
+- ALL navigation stays within the page — no window.location or external links
+
+CONTENT RULES:
+- Synthesize and rewrite content as polished professional copy
+- Extract and highlight KEY NUMBERS prominently
+- Group related information into logical sections
+- Write executive-level, scannable content
+- Do NOT copy raw text verbatim — transform it into designed content
+- Do NOT invent facts — only use what's in the source material
+- If data has trends (up/down), show with colored indicators (↑ green, ↓ red)
+
+QUALITY STANDARD:
+The result must look like a $10,000 custom dashboard — professional, beautiful, and immediately useful. Every section must add value. No filler content.
 """
 
 

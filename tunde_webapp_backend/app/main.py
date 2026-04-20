@@ -18,8 +18,6 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
 
 import os
 
-print("DEBUG GOOGLE_CLIENT_ID =", os.getenv("GOOGLE_CLIENT_ID", "EMPTY"))
-
 import sys
 import logging
 
@@ -41,6 +39,7 @@ from tunde_webapp_backend.app.pages_router import api_router as pages_api_router
 from tunde_webapp_backend.app.pages_router import share_router as pages_share_router
 from tunde_webapp_backend.app.auth_router import router as auth_router
 from tunde_webapp_backend.app.db_router import router as db_router
+from tunde_webapp_backend.app.business_router import router as business_router
 from tunde_webapp_backend.app.db import init_db
 from tunde_webapp_backend.app.seed_agents import seed_default_agents
 
@@ -91,6 +90,7 @@ def create_app() -> FastAPI:
     app.include_router(pages_share_router)
     app.include_router(auth_router)
     app.include_router(db_router)
+    app.include_router(business_router)
 
     logger.info("tunde backend initialized")
     return app

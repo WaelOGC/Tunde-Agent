@@ -520,7 +520,7 @@ Production (Docker):
 | Tool | Backend | Database | Frontend | Status |
 |------|:-------:|:--------:|:--------:|:------:|
 | Business Agent | ⚠️ | ⚠️ | ⚠️ | ⚠️ First slice (research / simulate / accounting upload / Canvas); **commit as one bundle** |
-| Design Agent | ❌ | ❌ | ❌ | ⏳ Next |
+| Design Agent | ❌ | ❌ | ❌ | ⚠️ In Development |
 | Creative Writer | ❌ | ❌ | ❌ | ⏳ Next |
 
 ### Infrastructure
@@ -703,7 +703,7 @@ Toolbar: Print | Copy | Share | Download | Code | View Page | Regenerate | ✕
 │ ✅ Data       │               └───────────────┘
 │ ⚠️ Document  │
 │ ⚠️ Business  │
-│ ❌ Design    │
+│ ⏳ Design    │
 │ ❌ Creative  │
 │ ❌ Voice     │
 └───────────────┘
@@ -845,12 +845,12 @@ CURRENT SPRINT
 ├── ⚠️ Business Agent (first slice — finish commit + QA)
 ├── ✅ Database (incl. business_research when migrated)
 ├── ✅ Conversation history + Canvas system
-└── ⚠️ Document Writer (markdown track — regression QA)
+├── ⚠️ Document Writer (markdown track — regression QA)
+└── ⏳ Design Agent — Phase 1 brand identity (full stack; docs: `docs/08_tools/design_agent.md`, `design_agent_spec.md`)
 
 NEXT (Phase 2)
 ├── ⏳ Complete Business Agent (tiers, polish, docs)
 ├── ⏳ Document Writer — close remaining UI gaps after QA
-├── ⏳ Design Agent (full stack)
 └── ⏳ Creative Writer (full stack)
 
 FUTURE (Phase 3)

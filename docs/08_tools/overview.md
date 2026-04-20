@@ -231,11 +231,15 @@ Each entry follows the same pattern. **Status** here means **roadmap** unless ot
 
 | Field | Detail |
 |-------|--------|
-| **Purpose** | UX copy, design briefs, component descriptions—not a replacement for professional design sign-off. |
-| **Input** | Product context, audience, constraints. |
-| **Output** | Briefs, wireframe language, accessibility reminders. |
-| **Agent** | **Design / UI specialist** |
-| **Status** | **Planned** |
+| **Name** | Design Agent |
+| **Status** | ⏳ **In Development** |
+| **Description** | AI-powered brand identity — colors, typography, logo & guidelines |
+| **Tier** | **Business / Enterprise** |
+| **Purpose** | Full brand identity package: palette, typography, SVG logo concepts, and brand guidelines in a dedicated Design Canvas—not a replacement for professional design sign-off on every launch. |
+| **Input** | Wizard: business info, audience & tone, color mood & logo style; confirm & generate (see [Design Agent](./design_agent.md)). |
+| **Output** | Structured brand identity + canvas review + exports (PNG, SVG, CSS variables, PDF per roadmap). |
+| **Agent** | **Design Agent** (brand / visual specialist path under CEO + QC) |
+| **Docs** | [Design Agent](./design_agent.md), [architecture & spec](./design_agent_spec.md) |
 
 ### Creative Writer
 
@@ -370,7 +374,7 @@ flowchart TB
 | Data Analyst | Core | P1 | Phase 2: charts + follow-up API + UI | **in_progress** |
 | Document Writer | Business | P2 | MVP: HTTP + UI + persistence | **in_progress** |
 | Business Agent | Business | P2 | Army | **not_started** |
-| Design Agent | Creative | P3 | Army | **not_started** |
+| Design Agent | Creative | P3 | Army — Brand Identity Phase 1 | **in_development** |
 | Creative Writer | Creative | P3 | Army + safety | **not_started** |
 
 ---
@@ -406,6 +410,7 @@ Cross-cutting rules apply to **every** tool: no bypass of [human approval](../01
 - [Study Assistant](./study_assistant.md) — study plans, practice, integrity, UI blocks.  
 - [Data Analyst](./data_analyst.md) — tabular analysis, privacy, Canvas export, phased roadmap.  
 - [Document Writer](./document_writer.md) — professional documents, safety, Canvas export.  
+- [Design Agent](./design_agent.md) — brand identity wizard, canvas, exports, tiers.  
 - [Agent Army overview](../07_agent_army/overview.md) — CEO / Army / QC narrative.  
 - [Multi-agent system (MAS)](../02_web_app_backend/multi_agent.md) — code-level roles and routing.  
 - [Tunde Hub overview](../06_tunde_hub/overview.md) — integrations and tiers.  

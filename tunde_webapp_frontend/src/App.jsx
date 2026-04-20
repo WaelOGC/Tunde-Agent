@@ -807,7 +807,7 @@ export function App() {
   const patchSessionMessages = useCallback((sessionId, updater) => {
     setSessions((ss) =>
       ss.map((s) => {
-        if (s.id !== activeSessionIdRef.current || s.id !== sessionId) return s;
+        if (s.id !== activeSessionIdRef.current && s.id !== sessionId) return s;
         const nextMessages = typeof updater === "function" ? updater(s.messages) : updater;
         return { ...s, messages: nextMessages };
       })

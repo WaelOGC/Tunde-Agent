@@ -19,6 +19,7 @@ from tunde_webapp_backend.app.db import db_session
 from tunde_webapp_backend.app.models.business_research import BusinessResearch
 from tunde_webapp_backend.app.models.canvas_page import CanvasPage
 from tunde_webapp_backend.app.models.conversation import Conversation
+from tunde_webapp_backend.app.models.generated_image import GeneratedImage
 from tunde_webapp_backend.app.models.message import Message
 from tunde_webapp_backend.app.models.tool_result import ToolResult
 
@@ -346,3 +347,74 @@ def get_business_research(research_id: uuid.UUID) -> dict:
         if row is None:
             raise HTTPException(status_code=404, detail="Business research record not found.")
         return {"ok": True, "item": _business_research_out(row)}
+
+
+def _generated_image_out(row: GeneratedImage) -> dict:
+    return {
+        "image_id": str(row.image_id),
+        "conv_id": str(row.conv_id),
+        "message_id": row.message_id,
+        "user_id": row.user_id,
+        "prompt": row.prompt,
+        "style_id": row.style_id,
+        "style_label": row.style_label,
+        "ratio_id": row.ratio_id,
+        "ratio_label": row.ratio_label,
+        "provider": row.provider,
+        "image_data": row.image_data,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+class GeneratedImageCreateBody(BaseModel):
+    conv_id: uuid.UUID
+    message_id: str = Field(..., max_length=256)
+    user_id: str = Field(..., max_length=128)
+    prompt: str = Field(..., max_length=2_000_000)
+    style_id: str = Field(..., max_length=128)
+    style_label: str = Field(..., max_length=256)
+    ratio_id: str = Field(..., max_length=64)
+    ratio_label: str = Field(..., max_length=256)
+    provider: str = Field(default="gemini", max_length=64)
+    image_data: str = Field(..., max_length=50_000_000)
+
+
+@router.post("/generated-images")
+def save_generated_image(body: GeneratedImageCreateBody) -> dict:
+    with db_session() as session:
+        conv = session.get(Conversation, body.conv_id)
+        if conv is None:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+
+        row = GeneratedImage(
+            conv_id=body.conv_id,
+            message_id=body.message_id,
+            user_id=body.user_id,
+            prompt=body.prompt,
+            style_id=body.style_id,
+            style_label=body.style_label,
+            ratio_id=body.ratio_id,
+            ratio_label=body.ratio_label,
+            provider=body.provider,
+            image_data=body.image_data,
+        )
+        session.add(row)
+        session.flush()
+        return {"ok": True, "generated_image": _generated_image_out(row)}
+
+
+@router.get("/generated-images/{conv_id}")
+def list_generated_images(conv_id: uuid.UUID) -> dict:
+    with db_session() as session:
+        conv = session.get(Conversation, conv_id)
+        if conv is None:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+
+        rows = session.scalars(
+            select(GeneratedImage).where(GeneratedImage.conv_id == conv_id).order_by(GeneratedImage.created_at.asc())
+        ).all()
+        return {
+            "ok": True,
+            "conv_id": str(conv_id),
+            "generated_images": [_generated_image_out(r) for r in rows],
+        }

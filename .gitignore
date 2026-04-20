@@ -24,3 +24,10 @@ data/reports/*
 # Runtime search API rotation log (see logs/.gitkeep)
 logs/*
 !logs/.gitkeep
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
+tunde_dev.db
+tunde_webapp_backend/tunde_dev.db

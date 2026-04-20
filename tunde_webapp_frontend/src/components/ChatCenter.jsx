@@ -17,6 +17,22 @@ import { AssistantFormattedText } from "../utils/AssistantFormattedText";
 import { stripExecutiveSummary } from "../utils/executiveText";
 import { prepareAssistantMarkdown, segmentMarkdownPipeTables } from "../utils/markdownTables";
 
+/** Split on markdown ATX headings after a newline — `#` through `######` so #### subsections become their own chunk (fixes missing section tabs vs. API `sections`). */
+const DOCUMENT_SECTION_SPLIT = /\r?\n(?=#{1,6}\s+)/;
+
+function extractSectionHeadingLabel(chunk) {
+  const normalized = String(chunk ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  for (const raw of normalized.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const hm = line.match(/^#{1,6}\s*(.+)$/);
+    if (hm && hm[1].trim()) return hm[1].trim();
+    const bold = line.match(/^\*\*([^*]+)\*\*\s*$/);
+    if (bold && bold[1].trim()) return bold[1].trim();
+  }
+  return "";
+}
+
 function SendIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -208,13 +224,20 @@ function DocumentSolutionBlock({ block, animationIndex = 0, messageId, onExportC
 
   const fullText = [title.trim() ? `# ${title.trim()}` : "", content.trim()].filter(Boolean).join("\n\n");
 
+  const docBodyScrollRef = useRef(null);
+
   const parts = useMemo(() => {
-    const c = content || "";
+    const c = (content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     if (!c.trim()) return [];
-    const bits = c.split(/\n(?=#{1,3}\s+)/);
+    const bits = c.split(DOCUMENT_SECTION_SPLIT);
     const out = bits.map((t) => String(t).trim()).filter(Boolean);
     return out.length ? out : [c.trim()];
   }, [content]);
+
+  useLayoutEffect(() => {
+    const el = docBodyScrollRef.current;
+    if (el) el.scrollTop = 0;
+  }, [content, messageId]);
 
   const [copied, setCopied] = useState(false);
   const copyDoc = async () => {
@@ -245,24 +268,26 @@ function DocumentSolutionBlock({ block, animationIndex = 0, messageId, onExportC
   };
 
   const scrollToSection = (idx) => {
+    const outer = docBodyScrollRef.current;
     const el = document.getElementById(`dw-sec-${safeMid}-${idx}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!outer || !el) return;
+    const oc = outer.getBoundingClientRect();
+    const ec = el.getBoundingClientRect();
+    const padding = 12;
+    const nextTop = outer.scrollTop + (ec.top - oc.top) - padding;
+    outer.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
   };
 
   const navEntries = useMemo(() => {
-    if (parts.length > 1) {
-      return parts.map((_, pi) => ({
+    if (parts.length <= 1) return [];
+    return parts.map((part, pi) => {
+      const api = sections[pi] != null ? String(sections[pi]).trim() : "";
+      const extracted = extractSectionHeadingLabel(part);
+      return {
         idx: pi,
-        label: (sections[pi] && String(sections[pi]).trim()) || `Section ${pi + 1}`,
-      }));
-    }
-    if (sections.length > 0) {
-      return sections.map((s, si) => ({
-        idx: 0,
-        label: String(s).trim() || `Section ${si + 1}`,
-      }));
-    }
-    return [];
+        label: api || extracted || `Section ${pi + 1}`,
+      };
+    });
   }, [parts, sections]);
 
   const metaBadge =
@@ -306,7 +331,11 @@ function DocumentSolutionBlock({ block, animationIndex = 0, messageId, onExportC
           <h2 className="text-lg font-semibold leading-snug tracking-tight text-white/95 md:text-xl">{title.trim()}</h2>
         ) : null}
       </div>
-      <div className="max-h-[min(70vh,520px)] overflow-y-auto px-3 py-3" style={{ backgroundColor: "#0d0f14" }}>
+      <div
+        ref={docBodyScrollRef}
+        className="max-h-[min(70vh,520px)] overflow-y-auto px-3 py-3"
+        style={{ backgroundColor: "#0d0f14", overflowAnchor: "none" }}
+      >
         <div
           className="document-paper-shell rounded-xl border border-slate-300/90 shadow-[0_4px_24px_rgba(15,23,42,0.12)]"
           style={{

@@ -1,13 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ChatCenter from "./components/ChatCenter";
+import ChatCenter, { TUNDE_MODES } from "./components/ChatCenter";
 import LandingCanvasPanel from "./components/LandingCanvasPanel";
 import BusinessAnalysisCanvas from "./components/BusinessAnalysisCanvas";
+import BrandIdentityWizard from "./components/BrandIdentityWizard";
+import DesignAgentCanvas from "./components/DesignAgentCanvas";
+import WebPageDesignerWizard from "./components/WebPageDesignerWizard";
+import WebPageDesignerCanvas from "./components/WebPageDesignerCanvas";
+import UIUXWizard from "./components/UIUXWizard";
+import UIUXCanvas from "./components/UIUXCanvas";
+import ArchitectureWizard from "./components/ArchitectureWizard";
+import ArchitectureCanvas from "./components/ArchitectureCanvas";
 import BusinessSimulateModal from "./components/BusinessSimulateModal";
 import { parseBusinessBrief } from "./utils/businessBrief";
 import { buildFullBusinessReportHtml } from "./utils/businessReportHtml";
 import { generatePage, publishPage } from "./utils/canvasExportCore";
 import SettingsPanel from "./components/SettingsPanel";
 import WorkspaceSidebar from "./components/WorkspaceSidebar";
+import ToolPickerModal from "./components/ToolPickerModal";
 import TundeHub from "./components/TundeHub";
 import { getMockSession } from "./state/mockSession";
 import { useTundeSocket } from "./state/useTundeSocket";
@@ -30,6 +39,19 @@ function makeMessageId() {
 
 const DEV_DB_USER = "dev_user";
 const TUNDE_LAST_ACTIVE_CONV_KEY = "tunde_last_active_conv_id";
+
+/** Keep the address bar in sync: DB conversation → `?conv=`, New chat (local draft) → `/`. */
+function syncConvUrlFromSession(sessionId) {
+  try {
+    if (!sessionId || String(sessionId).startsWith("local_")) {
+      window.history.pushState({}, "", "/");
+      return;
+    }
+    window.history.pushState({}, "", `?conv=${encodeURIComponent(String(sessionId))}`);
+  } catch {
+    /* ignore */
+  }
+}
 
 function isUuidLike(s) {
   return (
@@ -94,6 +116,9 @@ async function fetchConversationMessages(convId) {
 function workspaceToolFromDbToolType(tt) {
   const t = String(tt || "").toLowerCase();
   if (t === "math" || t === "math_solver") return "math_solver";
+  if (t === "web_page_designer") return "web_page_designer";
+  if (t === "uiux_prototype") return "uiux_prototype";
+  if (t === "architecture_agent") return "architecture_agent";
   return null;
 }
 
@@ -101,6 +126,10 @@ function workspaceToolFromDbToolType(tt) {
 function inferWorkspaceToolFromBlocks(blocks) {
   if (!Array.isArray(blocks)) return null;
   if (blocks.some((b) => String(b?.type || "").toLowerCase() === "math_solution")) return "math_solver";
+  if (blocks.some((b) => String(b?.type || "").toLowerCase() === "design_solution")) return "design_agent";
+  if (blocks.some((b) => String(b?.type || "").toLowerCase() === "web_page_solution")) return "web_page_designer";
+  if (blocks.some((b) => String(b?.type || "").toLowerCase() === "uiux_solution")) return "uiux_prototype";
+  if (blocks.some((b) => String(b?.type || "").toLowerCase() === "architecture_solution")) return "architecture_agent";
   return null;
 }
 
@@ -430,6 +459,10 @@ function loadEnabledTools() {
           data_analyst: Boolean(j.data_analyst),
           document_writer: Boolean(j.document_writer),
           business_agent: Boolean(j.business_agent),
+          design_agent: Boolean(j.design_agent),
+          web_page_designer: Boolean(j.web_page_designer),
+          uiux_prototype: Boolean(j.uiux_prototype),
+          architecture_agent: Boolean(j.architecture_agent),
         };
       }
     }
@@ -454,6 +487,10 @@ function loadEnabledTools() {
     data_analyst: false,
     document_writer: false,
     business_agent: false,
+    design_agent: false,
+    web_page_designer: false,
+    uiux_prototype: false,
+    architecture_agent: false,
   };
 }
 
@@ -480,6 +517,7 @@ export function App() {
   const [view, setView] = useState("chat");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [tundeHubOpen, setTundeHubOpen] = useState(false);
+  const [showToolPicker, setShowToolPicker] = useState(false);
 
   const [processing, setProcessing] = useState(false);
   const [currentRun, setCurrentRun] = useState(null);
@@ -488,6 +526,8 @@ export function App() {
   const runSessionRef = useRef(null);
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
+  const newChatFnRef = useRef(() => {});
+  const API_BASE = useMemo(() => backendHttpBase().replace(/\/$/, ""), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -512,16 +552,21 @@ export function App() {
           isLocalDraft: true,
           messagesHydrated: true,
         };
-        let nextActive = draft.id;
+        let urlConvId = null;
         try {
-          const last = localStorage.getItem(TUNDE_LAST_ACTIVE_CONV_KEY);
-          if (last && fromDb.some((x) => x.id === last)) {
-            nextActive = last;
-          } else if (fromDb.length > 0) {
-            nextActive = fromDb[0].id;
-          }
+          urlConvId = new URLSearchParams(window.location.search).get("conv");
         } catch {
           /* ignore */
+        }
+        let nextActive = draft.id;
+        if (urlConvId && fromDb.some((x) => x.id === urlConvId)) {
+          nextActive = urlConvId;
+        } else if (urlConvId) {
+          try {
+            window.history.replaceState({}, "", "/");
+          } catch {
+            /* ignore */
+          }
         }
         const nextSessions = [draft, ...fromDb];
         setSessions(nextSessions);
@@ -580,6 +625,8 @@ export function App() {
   const [fileAnalystContext, setFileAnalystContext] = useState(null);
   const fileAnalystContextRef = useRef(null);
   fileAnalystContextRef.current = fileAnalystContext;
+  const [attachedFile, setAttachedFile] = useState(null);
+  const [selectedMode, setSelectedMode] = useState(() => TUNDE_MODES[0]);
   const [landingOpen, setLandingOpen] = useState(false);
   const [landingBusy, setLandingBusy] = useState(false);
   const [landingState, setLandingState] = useState({
@@ -612,6 +659,15 @@ export function App() {
   const [businessSimulateMessageId, setBusinessSimulateMessageId] = useState(null);
   const [businessSimulateNotes, setBusinessSimulateNotes] = useState("");
   const [businessCanvasShareUrl, setBusinessCanvasShareUrl] = useState("");
+  const [showDesignWizard, setShowDesignWizard] = useState(false);
+  const designBlockCacheRef = useRef({});
+  const [designCanvasBrand, setDesignCanvasBrand] = useState(null);
+  const [showWebPageWizard, setShowWebPageWizard] = useState(false);
+  const [webPageCanvasData, setWebPageCanvasData] = useState(null);
+  const [showUIUXWizard, setShowUIUXWizard] = useState(false);
+  const [uiuxCanvasData, setUiuxCanvasData] = useState(null);
+  const [showArchWizard, setShowArchWizard] = useState(false);
+  const [archCanvasData, setArchCanvasData] = useState(null);
   const canvasPanelRef = useRef(null);
   /** @type {React.MutableRefObject<Record<string, { html: string; title: string; kind?: string }>>} */
   const canvasGeneratedHtmlRef = useRef({});
@@ -658,6 +714,8 @@ export function App() {
     setCanvasResearchBlock(null);
     setCanvasCodeBlock(null);
     setCanvasBusinessBlock(null);
+    setDesignCanvasBrand(null);
+    setShowDesignWizard(false);
     canvasGeneratedHtmlRef.current = {};
     landingPageVariantRef.current = "workspace";
     lastDataExportRef.current = null;
@@ -996,7 +1054,7 @@ export function App() {
                 id: makeMessageId(),
                 role: "assistant",
                 content:
-                  "🎨\n\n## Image Generation Setup: Choose Your Style\n\nPick a visual style below. **Generate Image** stays on until you turn it off in the **+** menu.",
+                  "🎨\n\n## Image Generation Setup: Choose Your Style\n\nPick a visual style below. **Generate Image** stays on until you turn it off in **Tools** (+ button).",
                 timestamp: new Date().toISOString(),
               },
             ]);
@@ -1004,6 +1062,42 @@ export function App() {
             setImageGenWizard(null);
           }
           return { ...prev, vision: nextVision };
+        });
+        return;
+      }
+      if (id === "design_agent") {
+        setEnabledTools((prev) => {
+          const next = !prev.design_agent;
+          if (next) setShowDesignWizard(true);
+          else setShowDesignWizard(false);
+          return { ...prev, design_agent: next };
+        });
+        return;
+      }
+      if (id === "web_page_designer") {
+        setEnabledTools((prev) => {
+          const next = !prev.web_page_designer;
+          if (next) setShowWebPageWizard(true);
+          else setShowWebPageWizard(false);
+          return { ...prev, web_page_designer: next };
+        });
+        return;
+      }
+      if (id === "uiux_prototype") {
+        setEnabledTools((prev) => {
+          const next = !prev.uiux_prototype;
+          if (next) setShowUIUXWizard(true);
+          else setShowUIUXWizard(false);
+          return { ...prev, uiux_prototype: next };
+        });
+        return;
+      }
+      if (id === "architecture_agent") {
+        setEnabledTools((prev) => {
+          const next = !prev.architecture_agent;
+          if (next) setShowArchWizard(true);
+          else setShowArchWizard(false);
+          return { ...prev, architecture_agent: next };
         });
         return;
       }
@@ -1020,9 +1114,73 @@ export function App() {
     [patchSessionMessages]
   );
 
+  const handleRenameChat = useCallback(
+    async (sessionId, newTitle) => {
+      if (!isUuidLike(String(sessionId))) {
+        setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s)));
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/db/conversations/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: newTitle }),
+        });
+        if (!res.ok) return;
+        setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s)));
+      } catch (err) {
+        console.error("Rename failed:", err);
+      }
+    },
+    [API_BASE]
+  );
+
+  const handleDeleteChat = useCallback(
+    async (sessionId) => {
+      if (!isUuidLike(String(sessionId))) {
+        const ss = sessionsRef.current;
+        const next = ss.filter((s) => s.id !== sessionId);
+        let out = next;
+        if (!next.length) {
+          const nid = `local_${makeId()}`;
+          out = [{ id: nid, title: "New chat", messages: [], isLocalDraft: true, messagesHydrated: true }];
+        }
+        const wasActive = activeSessionIdRef.current === sessionId;
+        let nextActive = activeSessionIdRef.current;
+        if (wasActive) {
+          nextActive = !next.length ? out[0].id : next[0].id;
+        }
+        setSessions(out);
+        if (wasActive) {
+          setActiveSessionId(nextActive);
+          syncConvUrlFromSession(nextActive);
+          setView("chat");
+          setMobileNavOpen(false);
+          const chosen = out.find((x) => x.id === nextActive);
+          if (chosen && !chosen.isLocalDraft && !chosen.messagesHydrated) {
+            void hydrateSessionMessages(nextActive);
+          }
+        }
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/db/conversations/${sessionId}`, { method: "DELETE" });
+        if (!res.ok) return;
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        if (activeSessionIdRef.current === sessionId) {
+          newChatFnRef.current();
+          setMobileNavOpen(false);
+        }
+      } catch (err) {
+        console.error("Delete failed:", err);
+      }
+    },
+    [API_BASE, hydrateSessionMessages]
+  );
+
   const handleAnalystFile = useCallback(
     async (file) => {
-      if (!enabledToolsRef.current.file_analyst) return;
+      if (!enabledToolsRef.current.file_analyst) return null;
       const sid = activeSessionIdRef.current;
       const ts = new Date().toISOString();
       const form = new FormData();
@@ -1050,7 +1208,7 @@ export function App() {
               timestamp: ts,
             },
           ]);
-          return;
+          return null;
         }
         let data;
         try {
@@ -1065,15 +1223,16 @@ export function App() {
               timestamp: ts,
             },
           ]);
-          return;
+          return null;
         }
-        setFileAnalystContext({
+        const ctx = {
           fileId: data.file_id,
           filename: data.filename,
           size: data.size,
           kind: data.kind,
           summary: data.summary,
-        });
+        };
+        setFileAnalystContext(ctx);
         patchSessionMessages(sid, (m) => [
           ...m,
           {
@@ -1092,6 +1251,7 @@ export function App() {
             ],
           },
         ]);
+        return ctx;
       } catch {
         patchSessionMessages(sid, (m) => [
           ...m,
@@ -1102,6 +1262,7 @@ export function App() {
             timestamp: ts,
           },
         ]);
+        return null;
       }
     },
     [patchSessionMessages, session.userId]
@@ -1292,10 +1453,17 @@ export function App() {
   });
 
   const submitUserMessage = useCallback(
-    async (text, { skipUserBubble = false, fileAnalystAction = null } = {}) => {
+    async (text, { skipUserBubble = false, fileAnalystAction = null, attachedFile: attachFromComposer = null } = {}) => {
       const trimmed = (text || "").trim();
       const et = enabledToolsRef.current;
-      const fac = fileAnalystContextRef.current;
+      let uploadCtx = null;
+      if (attachFromComposer) {
+        if (et.file_analyst) {
+          uploadCtx = await handleAnalystFile(attachFromComposer);
+        }
+        setAttachedFile(null);
+      }
+      const fac = uploadCtx?.fileId ? uploadCtx : fileAnalystContextRef.current;
       const hasFileCtx = Boolean(et.file_analyst && fac?.fileId);
       if (!trimmed && !(fileAnalystAction && hasFileCtx)) return;
 
@@ -1434,7 +1602,7 @@ export function App() {
         setLatestMessage("Server offline.");
       }
     },
-    [activeSessionId, connected, patchSessionMessages, ensureDbConversation, session.userId]
+    [activeSessionId, connected, handleAnalystFile, patchSessionMessages, ensureDbConversation, session.userId]
   );
 
   const submitMathProblem = useCallback(
@@ -2733,6 +2901,643 @@ export function App() {
             id: makeMessageId(),
             role: "assistant",
             content: "⚠️ **Business Agent** — could not reach the server.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setProcessing(false);
+        setLatestStatus("idle");
+        setLatestMessage("");
+      }
+    },
+    [activeSessionId, connected, ensureDbConversation, patchSessionMessages, session.userId]
+  );
+
+  const handleDesignAgentSubmit = useCallback(
+    async (formData) => {
+      if (!formData || !connected) return;
+
+      const userMsgId = makeMessageId();
+      const assistantMsgId = makeMessageId();
+      const ts = new Date().toISOString();
+      const briefLabel =
+        typeof formData.brand_name === "string" && formData.brand_name.trim()
+          ? formData.brand_name.trim().slice(0, 120)
+          : "your brand";
+      const convId = await ensureDbConversation(activeSessionId, {
+        title: briefLabel.slice(0, 512),
+        tool_used: "design_agent",
+      });
+
+      const userBlocks = [{ type: "design_brief", ...formData }];
+      const summaryLine = `**Design brief** — ${briefLabel}`;
+      patchSessionMessages(activeSessionId, (m) => [
+        ...m,
+        { id: userMsgId, role: "user", content: summaryLine, timestamp: ts, blocks: userBlocks },
+      ]);
+      if (convId) {
+        await postDbMessage({
+          convId,
+          messageId: userMsgId,
+          role: "user",
+          content: summaryLine,
+          blocks: userBlocks,
+          toolType: null,
+        });
+      }
+      setSessions((ss) =>
+        ss.map((s) =>
+          s.id === activeSessionId && s.title === "New chat" ? { ...s, title: briefLabel.slice(0, 40) } : s
+        )
+      );
+
+      setProcessing(true);
+      setLatestStatus("running");
+      setLatestMessage("Design Agent…");
+      setThoughtLog([]);
+
+      const base = backendHttpBase().replace(/\/$/, "");
+      try {
+        const r = await fetch(`${base}/tools/design/brand-identity`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            brand_name: formData.brand_name,
+            industry: formData.industry,
+            description: formData.description,
+            audience: formData.audience || "",
+            tone: formData.tone,
+            color_mood: formData.color_mood,
+            logo_style: formData.logo_style,
+            user_id: session.userId || "anonymous",
+          }),
+        });
+        const rawBody = await r.text();
+        if (!r.ok) {
+          let detail = rawBody.slice(0, 400);
+          try {
+            const ej = JSON.parse(rawBody);
+            if (ej && typeof ej.detail === "string") detail = ej.detail;
+            else if (Array.isArray(ej?.detail) && ej.detail[0]?.msg) detail = String(ej.detail[0].msg);
+          } catch {
+            /* ignore */
+          }
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ **Design Agent** — request failed\n\n${detail}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        let data;
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: "⚠️ **Design Agent** — invalid server response.",
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        const designBlockPayload = {
+          ...data,
+          type: "design_solution",
+          industry: formData.industry,
+          tone: formData.tone,
+          color_mood: formData.color_mood,
+          logo_style: formData.logo_style,
+          audience: formData.audience,
+        };
+        designBlockCacheRef.current[assistantMsgId] = designBlockPayload;
+        const introText = `**Design Agent** — brand identity ready for *${briefLabel}*. Open the Design Canvas to explore colors, type, logo, and exports.`;
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            timestamp: new Date().toISOString(),
+            blocks: [designBlockPayload],
+          },
+        ]);
+        if (convId) {
+          await postDbMessage({
+            convId,
+            messageId: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            blocks: [designBlockPayload],
+            toolType: "design_agent",
+          });
+          await saveToolResult("design_agent", JSON.stringify(formData), data, convId, assistantMsgId);
+        }
+        setDesignCanvasBrand(designBlockPayload);
+        setCanvasView("design");
+        setCanvasResearchBlock(null);
+        setCanvasCodeBlock(null);
+        setCanvasBusinessBlock(null);
+        setCanvasLinkedMessageId(assistantMsgId);
+        canvasLinkedMessageIdRef.current = assistantMsgId;
+        setLandingOpen(true);
+        setShowDesignWizard(false);
+      } catch (err) {
+        console.error("Design Agent submit failed:", err);
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: makeMessageId(),
+            role: "assistant",
+            content: "⚠️ **Design Agent** — could not reach the server.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setProcessing(false);
+        setLatestStatus("idle");
+        setLatestMessage("");
+      }
+    },
+    [activeSessionId, connected, ensureDbConversation, patchSessionMessages, session.userId]
+  );
+
+  const handleWebPageDesignerSubmit = useCallback(
+    async (formData) => {
+      if (!formData || !connected) return;
+
+      const userMsgId = makeMessageId();
+      const assistantMsgId = makeMessageId();
+      const ts = new Date().toISOString();
+      const briefLabel =
+        typeof formData.business_name === "string" && formData.business_name.trim()
+          ? formData.business_name.trim().slice(0, 120)
+          : "your page";
+      const convId = await ensureDbConversation(activeSessionId, {
+        title: briefLabel.slice(0, 512),
+        tool_used: "web_page_designer",
+      });
+
+      const userBlocks = [{ type: "web_page_brief", ...formData }];
+      const summaryLine = `**Web page brief** — ${briefLabel}`;
+      patchSessionMessages(activeSessionId, (m) => [
+        ...m,
+        { id: userMsgId, role: "user", content: summaryLine, timestamp: ts, blocks: userBlocks },
+      ]);
+      if (convId) {
+        await postDbMessage({
+          convId,
+          messageId: userMsgId,
+          role: "user",
+          content: summaryLine,
+          blocks: userBlocks,
+          toolType: null,
+        });
+      }
+      setSessions((ss) =>
+        ss.map((s) =>
+          s.id === activeSessionId && s.title === "New chat" ? { ...s, title: briefLabel.slice(0, 40) } : s
+        )
+      );
+
+      setProcessing(true);
+      setLatestStatus("running");
+      setLatestMessage("Web Page Designer…");
+      setThoughtLog([]);
+
+      const base = backendHttpBase().replace(/\/$/, "");
+      const requestBody = {
+        business_name: formData.business_name,
+        industry: formData.industry,
+        description: formData.description,
+        audience: formData.audience,
+        page_style: formData.page_style,
+        color_scheme: formData.color_scheme,
+        sections: formData.sections,
+        cta_text: formData.cta_text,
+        user_id: session.userId || "anonymous",
+      };
+      if (isUuidLike(String(activeSessionId))) {
+        requestBody.session_id = activeSessionId;
+      }
+      try {
+        const r = await fetch(`${base}/tools/web-page/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        const rawBody = await r.text();
+        if (!r.ok) {
+          let detail = rawBody.slice(0, 400);
+          try {
+            const ej = JSON.parse(rawBody);
+            if (ej && typeof ej.detail === "string") detail = ej.detail;
+            else if (Array.isArray(ej?.detail) && ej.detail[0]?.msg) detail = String(ej.detail[0].msg);
+          } catch {
+            /* ignore */
+          }
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ **Web Page Designer** — request failed\n\n${detail}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        let data;
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: "⚠️ **Web Page Designer** — invalid server response.",
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        const webPageBlockPayload = {
+          ...data,
+          type: "web_page_solution",
+          industry: formData.industry,
+          page_style: formData.page_style,
+          color_scheme: formData.color_scheme,
+          sections: Array.isArray(formData.sections) ? formData.sections : data.sections,
+        };
+        const introText = `**Web Page Designer** — page ready for *${briefLabel}*. Open the Page Canvas to preview and export HTML.`;
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            timestamp: new Date().toISOString(),
+            blocks: [webPageBlockPayload],
+          },
+        ]);
+        if (convId) {
+          await postDbMessage({
+            convId,
+            messageId: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            blocks: [webPageBlockPayload],
+            toolType: "web_page_designer",
+          });
+          await saveToolResult("web_page_designer", JSON.stringify(formData), data, convId, assistantMsgId);
+        }
+        setWebPageCanvasData(webPageBlockPayload);
+        setShowWebPageWizard(false);
+      } catch (err) {
+        console.error("Web Page Designer submit failed:", err);
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: makeMessageId(),
+            role: "assistant",
+            content: "⚠️ **Web Page Designer** — could not reach the server.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setProcessing(false);
+        setLatestStatus("idle");
+        setLatestMessage("");
+      }
+    },
+    [activeSessionId, connected, ensureDbConversation, patchSessionMessages, session.userId]
+  );
+
+  const handleUIUXPrototypeSubmit = useCallback(
+    async (formData) => {
+      if (!formData || !connected) return;
+
+      const userMsgId = makeMessageId();
+      const assistantMsgId = makeMessageId();
+      const ts = new Date().toISOString();
+      const briefLabel =
+        typeof formData.product_name === "string" && formData.product_name.trim()
+          ? formData.product_name.trim().slice(0, 120)
+          : "your prototype";
+      const convId = await ensureDbConversation(activeSessionId, {
+        title: briefLabel.slice(0, 512),
+        tool_used: "uiux_prototype",
+      });
+
+      const userBlocks = [{ type: "uiux_brief", ...formData }];
+      const summaryLine = `**UI/UX brief** — ${briefLabel}`;
+      patchSessionMessages(activeSessionId, (m) => [
+        ...m,
+        { id: userMsgId, role: "user", content: summaryLine, timestamp: ts, blocks: userBlocks },
+      ]);
+      if (convId) {
+        await postDbMessage({
+          convId,
+          messageId: userMsgId,
+          role: "user",
+          content: summaryLine,
+          blocks: userBlocks,
+          toolType: null,
+        });
+      }
+      setSessions((ss) =>
+        ss.map((s) =>
+          s.id === activeSessionId && s.title === "New chat" ? { ...s, title: briefLabel.slice(0, 40) } : s
+        )
+      );
+
+      setProcessing(true);
+      setLatestStatus("running");
+      setLatestMessage("UI/UX Prototype…");
+      setThoughtLog([]);
+
+      const base = backendHttpBase().replace(/\/$/, "");
+      const requestBody = {
+        product_name: formData.product_name,
+        product_type: formData.product_type,
+        industry: formData.industry,
+        description: formData.description,
+        platform: formData.platform,
+        ui_style: formData.ui_style,
+        color_theme: formData.color_theme,
+        screens: formData.screens,
+        components: formData.components,
+        primary_action: formData.primary_action,
+        user_id: session.userId || "anonymous",
+      };
+      if (isUuidLike(String(activeSessionId))) {
+        requestBody.session_id = activeSessionId;
+      }
+      try {
+        const r = await fetch(`${base}/tools/uiux/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        const rawBody = await r.text();
+        if (!r.ok) {
+          let detail = rawBody.slice(0, 400);
+          try {
+            const ej = JSON.parse(rawBody);
+            if (ej && typeof ej.detail === "string") detail = ej.detail;
+            else if (Array.isArray(ej?.detail) && ej.detail[0]?.msg) detail = String(ej.detail[0].msg);
+          } catch {
+            /* ignore */
+          }
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ **UI/UX Prototype** — request failed\n\n${detail}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        let data;
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: "⚠️ **UI/UX Prototype** — invalid server response.",
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        const uiuxBlockPayload = {
+          ...data,
+          type: "uiux_solution",
+          screens: Array.isArray(formData.screens) ? formData.screens : data.screens,
+          components: Array.isArray(formData.components) ? formData.components : data.components,
+        };
+        const introText = `**UI/UX Prototype** — prototype ready for *${briefLabel}*. Open the Prototype Canvas to preview and export.`;
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            timestamp: new Date().toISOString(),
+            blocks: [uiuxBlockPayload],
+          },
+        ]);
+        if (convId) {
+          await postDbMessage({
+            convId,
+            messageId: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            blocks: [uiuxBlockPayload],
+            toolType: "uiux_prototype",
+          });
+          await saveToolResult("uiux_prototype", JSON.stringify(formData), data, convId, assistantMsgId);
+        }
+        setUiuxCanvasData(uiuxBlockPayload);
+        setShowUIUXWizard(false);
+      } catch (err) {
+        console.error("UI/UX Prototype submit failed:", err);
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: makeMessageId(),
+            role: "assistant",
+            content: "⚠️ **UI/UX Prototype** — could not reach the server.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setProcessing(false);
+        setLatestStatus("idle");
+        setLatestMessage("");
+      }
+    },
+    [activeSessionId, connected, ensureDbConversation, patchSessionMessages, session.userId]
+  );
+
+  const handleOpenDesignCanvas = useCallback((brand) => {
+    if (!brand || typeof brand !== "object") return;
+    const normalized = { ...brand, type: "design_solution" };
+    setDesignCanvasBrand(normalized);
+    setCanvasView("design");
+    setCanvasResearchBlock(null);
+    setCanvasCodeBlock(null);
+    setCanvasBusinessBlock(null);
+    setLandingOpen(true);
+  }, []);
+
+  const handleOpenWebPageCanvas = useCallback((data) => {
+    setWebPageCanvasData(data);
+  }, []);
+
+  const handleOpenUIUXCanvas = useCallback((data) => {
+    setUiuxCanvasData(data);
+  }, []);
+
+  const handleOpenArchitectureCanvas = useCallback((data) => {
+    setArchCanvasData(data);
+  }, []);
+
+  const handleArchitectureSubmit = useCallback(
+    async (formData) => {
+      if (!formData || !connected) return;
+
+      const userMsgId = makeMessageId();
+      const assistantMsgId = makeMessageId();
+      const ts = new Date().toISOString();
+      const briefLabel =
+        typeof formData.project_name === "string" && formData.project_name.trim()
+          ? formData.project_name.trim().slice(0, 120)
+          : "your project";
+      const convId = await ensureDbConversation(activeSessionId, {
+        title: briefLabel.slice(0, 512),
+        tool_used: "architecture_agent",
+      });
+
+      const userBlocks = [{ type: "architecture_brief", ...formData }];
+      const summaryLine = `**Architecture brief** — ${briefLabel}`;
+      patchSessionMessages(activeSessionId, (m) => [
+        ...m,
+        { id: userMsgId, role: "user", content: summaryLine, timestamp: ts, blocks: userBlocks },
+      ]);
+      if (convId) {
+        await postDbMessage({
+          convId,
+          messageId: userMsgId,
+          role: "user",
+          content: summaryLine,
+          blocks: userBlocks,
+          toolType: null,
+        });
+      }
+      setSessions((ss) =>
+        ss.map((s) =>
+          s.id === activeSessionId && s.title === "New chat" ? { ...s, title: briefLabel.slice(0, 40) } : s
+        )
+      );
+
+      setProcessing(true);
+      setLatestStatus("running");
+      setLatestMessage("Architecture Visualizer…");
+      setThoughtLog([]);
+
+      const base = backendHttpBase().replace(/\/$/, "");
+      const requestBody = {
+        project_name: formData.project_name,
+        building_type: formData.building_type,
+        description: formData.description,
+        location_climate: formData.location_climate,
+        total_area: formData.total_area,
+        floors: formData.floors,
+        floor_height: formData.floor_height,
+        rooms: formData.rooms,
+        special_requirements: formData.special_requirements || null,
+        style: formData.style,
+        structure_type: formData.structure_type,
+        facade_material: formData.facade_material,
+        roof_type: formData.roof_type,
+        user_id: session.userId || "anonymous",
+      };
+      if (isUuidLike(String(activeSessionId))) {
+        requestBody.session_id = activeSessionId;
+      }
+      try {
+        const r = await fetch(`${base}/tools/architecture/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        const rawBody = await r.text();
+        if (!r.ok) {
+          let detail = rawBody.slice(0, 400);
+          try {
+            const ej = JSON.parse(rawBody);
+            if (ej && typeof ej.detail === "string") detail = ej.detail;
+            else if (Array.isArray(ej?.detail) && ej.detail[0]?.msg) detail = String(ej.detail[0].msg);
+          } catch {
+            /* ignore */
+          }
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: `⚠️ **Architecture Visualizer** — request failed\n\n${detail}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        let data;
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          patchSessionMessages(activeSessionId, (m) => [
+            ...m,
+            {
+              id: makeMessageId(),
+              role: "assistant",
+              content: "⚠️ **Architecture Visualizer** — invalid server response.",
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+          return;
+        }
+        const archBlockPayload = {
+          ...data,
+          type: "architecture_solution",
+          rooms: Array.isArray(formData.rooms) ? formData.rooms : data.rooms,
+        };
+        const introText = `**Architecture Visualizer** — model ready for *${briefLabel}*. Open the Architecture Canvas to explore 3D and reports.`;
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            timestamp: new Date().toISOString(),
+            blocks: [archBlockPayload],
+          },
+        ]);
+        if (convId) {
+          await postDbMessage({
+            convId,
+            messageId: assistantMsgId,
+            role: "assistant",
+            content: introText,
+            blocks: [archBlockPayload],
+            toolType: "architecture_agent",
+          });
+          await saveToolResult("architecture_agent", JSON.stringify(formData), data, convId, assistantMsgId);
+        }
+        setArchCanvasData(archBlockPayload);
+        setShowArchWizard(false);
+      } catch (err) {
+        console.error("Architecture Visualizer submit failed:", err);
+        patchSessionMessages(activeSessionId, (m) => [
+          ...m,
+          {
+            id: makeMessageId(),
+            role: "assistant",
+            content: "⚠️ **Architecture Visualizer** — could not reach the server.",
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -4246,6 +5051,7 @@ export function App() {
 
   const closeCanvasPanel = useCallback(() => {
     setLandingOpen(false);
+    setDesignCanvasBrand(null);
   }, []);
 
   const resetRunUi = () => {
@@ -4276,6 +5082,8 @@ export function App() {
     setCanvasResearchBlock(null);
     setCanvasCodeBlock(null);
     setCanvasBusinessBlock(null);
+    setDesignCanvasBrand(null);
+    setShowDesignWizard(false);
     setBusinessCanvasShareUrl("");
     setBusinessSimulateMessageId(null);
     setBusinessSimulateNotes("");
@@ -4320,6 +5128,8 @@ export function App() {
     setCanvasResearchBlock(null);
     setCanvasCodeBlock(null);
     setCanvasBusinessBlock(null);
+    setDesignCanvasBrand(null);
+    setShowDesignWizard(false);
     canvasGeneratedHtmlRef.current = {};
     landingPageVariantRef.current = "workspace";
     lastDataExportRef.current = null;
@@ -4335,9 +5145,11 @@ export function App() {
       ...ss,
     ]);
     setActiveSessionId(id);
+    syncConvUrlFromSession(id);
     setView("chat");
     resetRunUi();
   };
+  newChatFnRef.current = newChat;
 
   return (
     <div className="flex h-screen max-h-screen w-full overflow-hidden font-sans antialiased">
@@ -4362,6 +5174,7 @@ export function App() {
           onSelectSession={async (id) => {
             await hydrateSessionMessages(id);
             setActiveSessionId(id);
+            syncConvUrlFromSession(id);
             setView("chat");
             setMobileNavOpen(false);
           }}
@@ -4377,6 +5190,8 @@ export function App() {
             setView("settings");
             setMobileNavOpen(false);
           }}
+          onRenameChat={handleRenameChat}
+          onDeleteChat={handleDeleteChat}
           connected={connected}
         />
       </div>
@@ -4449,7 +5264,6 @@ export function App() {
                     onImageStyleSelect={onImageStyleSelect}
                     onImageRatioSelect={onImageRatioSelect}
                     fileAnalystContext={fileAnalystContext}
-                    onAnalystFile={handleAnalystFile}
                     onDataWizardAction={onDataWizardAction}
                     onCanvasOpen={handleCreateLandingPage}
                     canvasBusy={landingBusy}
@@ -4463,6 +5277,7 @@ export function App() {
                           Boolean(canvasResearchBlock) ||
                           Boolean(canvasCodeBlock) ||
                           Boolean(canvasBusinessBlock) ||
+                          Boolean(designCanvasBrand) ||
                           Boolean((st.html || "").trim()) ||
                           Boolean((landingPendingFullHtmlRef.current || "").trim());
                         if (hasCanvasContent) setLandingOpen(true);
@@ -4474,7 +5289,10 @@ export function App() {
                         inline: "nearest",
                       });
                     }}
-                    onSend={(text) => submitUserMessage(text)}
+                    attachedFile={attachedFile}
+                    onFileAttached={(file) => setAttachedFile(file)}
+                    onFileClear={() => setAttachedFile(null)}
+                    onSend={(text, opts) => submitUserMessage(text, opts)}
                     onMathSolve={submitMathProblem}
                     onScienceSolve={submitScienceQuestion}
                     onChemistrySolve={submitChemistryQuestion}
@@ -4493,6 +5311,13 @@ export function App() {
                     onDataAnalystFollowUp={handleDataAnalystFollowUp}
                     onRetryLastPrompt={retryLastUserPrompt}
                     onBusinessAction={handleBusinessAction}
+                    onOpenDesignCanvas={handleOpenDesignCanvas}
+                    onOpenWebPageCanvas={handleOpenWebPageCanvas}
+                    onOpenUIUXCanvas={handleOpenUIUXCanvas}
+                    onOpenArchitectureCanvas={handleOpenArchitectureCanvas}
+                    onOpenToolPicker={() => setShowToolPicker(true)}
+                    selectedMode={selectedMode}
+                    onModeChange={(mode) => setSelectedMode(mode)}
                   />
                 </div>
                 {landingOpen && canvasView === "business" ? (
@@ -4508,7 +5333,15 @@ export function App() {
                     onApplyRevision={handleBusinessCanvasRevision}
                   />
                 ) : null}
-                {landingOpen && canvasView !== "business" ? (
+                {landingOpen && canvasView === "design" && designCanvasBrand ? (
+                  <DesignAgentCanvas
+                    ref={canvasPanelRef}
+                    open={landingOpen}
+                    brand={designCanvasBrand}
+                    onClose={closeCanvasPanel}
+                  />
+                ) : null}
+                {landingOpen && canvasView !== "business" && canvasView !== "design" ? (
                   <LandingCanvasPanel
                     ref={canvasPanelRef}
                     open={landingOpen}
@@ -4538,6 +5371,50 @@ export function App() {
         </div>
       </div>
 
+      {showDesignWizard ? (
+        <BrandIdentityWizard
+          onSubmit={handleDesignAgentSubmit}
+          onClose={() => setShowDesignWizard(false)}
+          isLoading={processing}
+        />
+      ) : null}
+
+      {showWebPageWizard ? (
+        <WebPageDesignerWizard
+          onSubmit={handleWebPageDesignerSubmit}
+          onClose={() => setShowWebPageWizard(false)}
+          isLoading={processing}
+        />
+      ) : null}
+
+      {webPageCanvasData ? (
+        <WebPageDesignerCanvas page={webPageCanvasData} onClose={() => setWebPageCanvasData(null)} />
+      ) : null}
+
+      {showUIUXWizard ? (
+        <UIUXWizard
+          onSubmit={handleUIUXPrototypeSubmit}
+          onClose={() => setShowUIUXWizard(false)}
+          isLoading={processing}
+        />
+      ) : null}
+
+      {uiuxCanvasData ? (
+        <UIUXCanvas prototype={uiuxCanvasData} onClose={() => setUiuxCanvasData(null)} />
+      ) : null}
+
+      {showArchWizard ? (
+        <ArchitectureWizard
+          onSubmit={handleArchitectureSubmit}
+          onClose={() => setShowArchWizard(false)}
+          isLoading={processing}
+        />
+      ) : null}
+
+      {archCanvasData ? (
+        <ArchitectureCanvas project={archCanvasData} onClose={() => setArchCanvasData(null)} />
+      ) : null}
+
       <BusinessSimulateModal
         open={Boolean(businessSimulateMessageId)}
         messageId={businessSimulateMessageId}
@@ -4556,6 +5433,13 @@ export function App() {
         open={tundeHubOpen}
         onClose={() => setTundeHubOpen(false)}
         apiBase={backendHttpBase().replace(/\/$/, "")}
+      />
+
+      <ToolPickerModal
+        open={showToolPicker}
+        onClose={() => setShowToolPicker(false)}
+        enabledTools={enabledTools}
+        onToggleTool={handleToggleTool}
       />
     </div>
   );

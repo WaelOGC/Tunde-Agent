@@ -123,6 +123,59 @@ function formatFileSize(bytes) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function fileIcon(name) {
+  const parts = String(name || "").split(".");
+  const ext = (parts.pop() || "").toLowerCase();
+  if (["png", "jpg", "jpeg"].includes(ext)) return "🖼️";
+  if (["pdf"].includes(ext)) return "📄";
+  if (["csv", "xlsx", "xls"].includes(ext)) return "📊";
+  if (["txt", "docx"].includes(ext)) return "📝";
+  return "📎";
+}
+
+const ATTACH_OPTIONS = [
+  { icon: "🖼️", label: "Image", accept: ".png,.jpg,.jpeg,.webp,.gif" },
+  { icon: "📄", label: "Document", accept: ".pdf,.docx,.txt,.md" },
+  { icon: "📊", label: "Spreadsheet", accept: ".csv,.xlsx,.xls" },
+  { icon: "📁", label: "Any file", accept: "*" },
+];
+
+function hexToRgba(hex, alpha) {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return `rgba(168,85,247,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+export const TUNDE_MODES = [
+  {
+    id: "standard",
+    label: "Tunde",
+    badge: "Standard",
+    description: "Balanced for everyday tasks",
+    color: "#a855f7",
+    dot: "🟣",
+  },
+  {
+    id: "pro",
+    label: "Tunde",
+    badge: "Pro",
+    description: "Deeper analysis & reasoning",
+    color: "#3b82f6",
+    dot: "🔵",
+  },
+  {
+    id: "fast",
+    label: "Tunde",
+    badge: "Fast",
+    description: "Quick answers, instant results",
+    color: "#10b981",
+    dot: "⚡",
+  },
+];
+
 function kindLabel(kind) {
   const k = String(kind || "").toLowerCase();
   if (k === "tabular") return "Spreadsheet (CSV / Excel)";
@@ -1177,109 +1230,6 @@ function DataSolutionBlock({
   );
 }
 
-const TOOL_MENU_SECTIONS = [
-  {
-    category: "Core Tools",
-    items: [
-      { id: "search", label: "Search", hint: "Live web research", live: true },
-      { id: "analysis", label: "Analyze", hint: "Pasted CSV / TSV tables", live: true },
-      {
-        id: "file_analyst",
-        label: "File Analyst",
-        hint: "Upload CSV, Excel, PDF, or TXT",
-        live: true,
-      },
-      { id: "vision", label: "Generate Image", hint: "Style & aspect wizard", live: true },
-      {
-        id: "code_assistant",
-        label: "Code Assistant",
-        hint: "Write, debug, explain, review — syntax-highlighted output",
-        live: true,
-      },
-      {
-        id: "translation_agent",
-        label: "Translation",
-        hint: "50+ languages — detection, tone, transliteration & alternatives",
-        live: true,
-      },
-      {
-        id: "research_agent",
-        label: "Research Agent",
-        hint: "Multi-source summaries, citations, credibility & debates",
-        live: true,
-      },
-      {
-        id: "data_analyst",
-        label: "Data Analyst",
-        hint: "CSV / JSON — stats, insights, narrative, alerts & Canvas export",
-        live: true,
-      },
-    ],
-  },
-  {
-    category: "Education",
-    items: [
-      { id: "math_solver", label: "Math Solver", hint: "Step-by-step algebra, calculus & more", live: true },
-      {
-        id: "science_agent",
-        label: "Science Agent",
-        hint: "Physics, biology, earth science & more",
-        live: true,
-      },
-      {
-        id: "chemistry_agent",
-        label: "Chemistry Agent",
-        hint: "Reactions, balancing & 3D molecules",
-        live: true,
-      },
-      {
-        id: "space_agent",
-        label: "Space Agent",
-        hint: "Astronomy, missions, 3D solar system & cosmic views",
-        live: true,
-      },
-      {
-        id: "health_agent",
-        label: "Health Agent",
-        hint: "Education only — anatomy, wellness, terminology (not medical advice)",
-        live: true,
-      },
-      {
-        id: "study_assistant",
-        label: "Study Assistant",
-        hint: "Summaries, study plans, memory tips & practice — learning-focused",
-        live: true,
-      },
-    ],
-  },
-  {
-    category: "Business",
-    items: [
-      { id: "simulation", label: "Simulation", live: false },
-      { id: "voice", label: "Voice", live: false },
-      {
-        id: "document_writer",
-        label: "Document Writer",
-        hint: "Reports, proposals, emails, letters — professional drafts",
-        live: true,
-      },
-      {
-        id: "business_agent",
-        label: "Business Agent",
-        hint: "Market & competitor intel, SWOT, P/L scenarios, radar & outlook",
-        live: true,
-      },
-    ],
-  },
-  {
-    category: "Creative",
-    items: [
-      { id: "design_agent", label: "Design Agent", live: false },
-      { id: "creative_writer", label: "Creative Writer", live: false },
-    ],
-  },
-];
-
 const WELCOME_PILLS = [
   { id: "search", label: "Search" },
   { id: "file", label: "Analyze file" },
@@ -1486,6 +1436,350 @@ function BusinessBriefCard({ fields, raw }) {
             <summary className="cursor-pointer select-none py-1 font-medium text-white/80">Original message</summary>
             <p className="mt-1 whitespace-pre-wrap pb-2 text-[12px] leading-relaxed text-white/75">{rawText}</p>
           </details>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function DesignBriefCard({ block }) {
+  const b = block && typeof block === "object" ? block : {};
+  const rows = [
+    ["Brand", b.brand_name],
+    ["Industry", b.industry],
+    ["Description", b.description],
+    ["Audience", b.audience],
+    ["Tone", b.tone],
+    ["Color mood", b.color_mood],
+    ["Logo style", b.logo_style],
+  ].filter(([, v]) => v != null && String(v).trim());
+  return (
+    <div className="mt-2 w-full overflow-hidden rounded-xl border border-purple-500/25 bg-slate-950/50 text-left shadow-[0_12px_40px_rgba(0,0,0,0.35)] ring-1 ring-purple-500/15 backdrop-blur-md">
+      <div className="border-b border-white/[0.08] bg-purple-500/10 px-3 py-2">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-purple-200/95">Design brief</p>
+        <p className="mt-0.5 text-[11px] text-white/55">Inputs for your brand identity pack</p>
+      </div>
+      <div className="space-y-2 px-3 py-3">
+        {rows.length ? (
+          <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {rows.map(([label, val]) => (
+              <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2">
+                <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+                <dd className="mt-1 text-[13px] leading-snug text-white/95">{String(val)}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="text-[12px] leading-relaxed text-white/80">No design brief fields in this message.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DesignSolutionBlock({ block, animationIndex = 0, onOpenDesignCanvas }) {
+  const brandName = typeof block.brand_name === "string" ? block.brand_name.trim() : "Brand";
+  const tagline = typeof block.tagline === "string" ? block.tagline.trim() : "";
+  const industry = typeof block.industry === "string" ? block.industry.trim() : "";
+  const tone = typeof block.tone === "string" ? block.tone.trim() : "";
+  const palette = Array.isArray(block.palette) ? block.palette : [];
+  const iconSvg = typeof block.logo_icon_svg === "string" ? block.logo_icon_svg : "";
+  const dots = palette.slice(0, 5);
+
+  const openCanvas = () => {
+    if (typeof onOpenDesignCanvas !== "function") return;
+    const payload = { ...block, type: "design_solution" };
+    onOpenDesignCanvas(payload);
+  };
+
+  const metaParts = [industry, tone].filter(Boolean);
+
+  return (
+    <div
+      className="canvas-block-enter mt-4 overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_24px_48px_rgba(0,0,0,0.55)] first:mt-0"
+      style={{ animationDelay: `${animationIndex * 50}ms`, backgroundColor: "#0d0f14" }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5" style={{ backgroundColor: "#0d0f14" }}>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px]" aria-hidden>
+              🎨
+            </span>
+            <span className="rounded-md border border-purple-500/40 bg-purple-500/12 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-purple-100/95">
+              Design Agent
+            </span>
+          </div>
+          <p className="mt-1.5 truncate text-[14px] font-semibold text-slate-100">{brandName}</p>
+          {tagline ? <p className="truncate text-[12px] text-slate-500">{tagline}</p> : null}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 border-b border-white/[0.06] px-3 py-4" style={{ backgroundColor: "#0b0c10" }}>
+        <div className="flex gap-1.5">
+          {dots.map((sw, i) => {
+            const hx = typeof sw.hex === "string" ? sw.hex : "#334155";
+            return (
+              <span
+                key={i}
+                className="h-8 w-8 shrink-0 rounded-full border border-white/15 shadow-inner ring-1 ring-black/30"
+                style={{ backgroundColor: hx }}
+                title={typeof sw.name === "string" ? sw.name : ""}
+              />
+            );
+          })}
+        </div>
+        {iconSvg ? (
+          <div
+            className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-purple-500/25 bg-black/40 p-1 [&_svg]:h-full [&_svg]:w-full"
+            dangerouslySetInnerHTML={{ __html: iconSvg }}
+          />
+        ) : (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-dashed border-slate-600/80 text-[10px] text-slate-600">
+            No icon
+          </div>
+        )}
+      </div>
+
+      <div className="px-3 py-4" style={{ backgroundColor: "#0d0f14" }}>
+        <button
+          type="button"
+          onClick={openCanvas}
+          className="w-full rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-3 text-[13px] font-bold text-white shadow-lg shadow-purple-950/40 transition hover:from-purple-400 hover:to-pink-400"
+        >
+          Open Design Canvas
+        </button>
+        {metaParts.length ? (
+          <p className="mt-3 text-center text-[11px] text-slate-500">{metaParts.join(" · ")}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function UIUXSolutionBlock({ block, animationIndex = 0, onOpenUIUXCanvas }) {
+  const productName =
+    typeof block.product_name === "string" ? block.product_name.trim() : "Prototype";
+  const productType = typeof block.product_type === "string" ? block.product_type.trim() : "";
+  const platform = typeof block.platform === "string" ? block.platform.trim() : "";
+  const uiStyle = typeof block.ui_style === "string" ? block.ui_style.trim() : "";
+  const screens = Array.isArray(block.screens) ? block.screens : [];
+
+  const openCanvas = () => {
+    if (typeof onOpenUIUXCanvas !== "function") return;
+    const payload = { ...block, type: "uiux_solution" };
+    onOpenUIUXCanvas(payload);
+  };
+
+  const metaParts = [uiStyle].filter(Boolean);
+
+  return (
+    <div
+      className="canvas-block-enter mt-4 overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_24px_48px_rgba(0,0,0,0.55)] first:mt-0"
+      style={{ animationDelay: `${animationIndex * 50}ms`, backgroundColor: "#0d0f14" }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5" style={{ backgroundColor: "#0d0f14" }}>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px]" aria-hidden>
+              🖥️
+            </span>
+            <span className="rounded-md border border-purple-500/40 bg-purple-500/12 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-purple-100/95">
+              UI/UX Prototype
+            </span>
+          </div>
+          <p className="mt-1.5 truncate text-[14px] font-semibold text-slate-100">{productName}</p>
+          {productType || platform ? (
+            <p className="truncate text-[12px] text-slate-500">
+              {[productType, platform].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 border-b border-white/[0.06] px-3 py-3" style={{ backgroundColor: "#0b0c10" }}>
+        {screens.length ? (
+          screens.map((s, i) => (
+            <span
+              key={`${String(s)}-${i}`}
+              className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-slate-300"
+            >
+              {typeof s === "string" ? s : String(s)}
+            </span>
+          ))
+        ) : (
+          <span className="text-[11px] text-slate-600">No screens listed</span>
+        )}
+      </div>
+
+      <div className="px-3 py-4" style={{ backgroundColor: "#0d0f14" }}>
+        <button
+          type="button"
+          onClick={openCanvas}
+          className="w-full rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-3 text-[13px] font-bold text-white shadow-lg shadow-purple-950/40 transition hover:from-purple-400 hover:to-pink-400"
+        >
+          Open Prototype Canvas
+        </button>
+        {metaParts.length ? (
+          <p className="mt-3 text-center text-[11px] text-slate-500">{metaParts.join(" · ")}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ArchitectureSolutionBlock({ block, animationIndex = 0, onOpenArchitectureCanvas }) {
+  const projectName =
+    typeof block.project_name === "string" ? block.project_name.trim() : "Project";
+  const buildingType =
+    typeof block.building_type === "string" ? block.building_type.trim() : "";
+  const style =
+    typeof block.style === "string" ? block.style.trim() : "";
+  const climate =
+    typeof block.location_climate === "string" ? block.location_climate.trim() : "";
+  const totalArea = typeof block.total_area === "number" && Number.isFinite(block.total_area)
+    ? block.total_area
+    : null;
+  const floors =
+    typeof block.floors === "number" && Number.isFinite(block.floors) ? block.floors : null;
+  const sustainability =
+    block.sustainability && typeof block.sustainability === "object" ? block.sustainability : {};
+  const grade =
+    typeof sustainability.overall_grade === "string"
+      ? sustainability.overall_grade.trim()
+      : "";
+  const structureType =
+    typeof block.structure_type === "string" ? block.structure_type.trim() : "";
+  const facadeMaterial =
+    typeof block.facade_material === "string" ? block.facade_material.trim() : "";
+
+  const openCanvas = () => {
+    if (typeof onOpenArchitectureCanvas !== "function") return;
+    const payload = { ...block, type: "architecture_solution" };
+    onOpenArchitectureCanvas(payload);
+  };
+
+  const metaParts = [structureType, facadeMaterial].filter(Boolean);
+  const infoParts = [];
+  if (totalArea != null) infoParts.push(`${totalArea} m²`);
+  if (floors != null) infoParts.push(`${floors} floors`);
+  if (climate) infoParts.push(climate);
+
+  return (
+    <div
+      className="canvas-block-enter mt-4 overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_24px_48px_rgba(0,0,0,0.55)] first:mt-0"
+      style={{ animationDelay: `${animationIndex * 50}ms`, backgroundColor: "#0d0f14" }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5" style={{ backgroundColor: "#0d0f14" }}>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px]" aria-hidden>
+              🏛️
+            </span>
+            <span className="rounded-md border border-amber-500/40 bg-amber-500/12 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-100/95">
+              Architecture Visualizer
+            </span>
+            {grade ? (
+              <span className="rounded-md border border-emerald-500/35 bg-emerald-500/12 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-100/95">
+                {grade}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1.5 truncate text-[14px] font-semibold text-slate-100">{projectName}</p>
+          {buildingType || style ? (
+            <p className="truncate text-[12px] text-slate-500">
+              {[buildingType, style].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {infoParts.length ? (
+        <div className="border-b border-white/[0.06] px-3 py-2.5 text-[11px] text-slate-400" style={{ backgroundColor: "#0b0c10" }}>
+          {infoParts.join(" · ")}
+        </div>
+      ) : null}
+
+      <div className="px-3 py-4" style={{ backgroundColor: "#0d0f14" }}>
+        <button
+          type="button"
+          onClick={openCanvas}
+          className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 text-[13px] font-bold text-white shadow-lg shadow-amber-950/40 transition hover:from-amber-400 hover:to-orange-400"
+        >
+          Open Architecture Canvas
+        </button>
+        {metaParts.length ? (
+          <p className="mt-3 text-center text-[11px] text-slate-500">{metaParts.join(" · ")}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function WebPageSolutionBlock({ block, animationIndex = 0, onOpenWebPageCanvas }) {
+  const businessName =
+    typeof block.business_name === "string" ? block.business_name.trim() : "Page";
+  const pageStyle = typeof block.page_style === "string" ? block.page_style.trim() : "";
+  const colorScheme = typeof block.color_scheme === "string" ? block.color_scheme.trim() : "";
+  const industry = typeof block.industry === "string" ? block.industry.trim() : "";
+  const sections = Array.isArray(block.sections) ? block.sections : [];
+
+  const openCanvas = () => {
+    if (typeof onOpenWebPageCanvas !== "function") return;
+    const payload = { ...block, type: "web_page_solution" };
+    onOpenWebPageCanvas(payload);
+  };
+
+  const metaParts = [industry].filter(Boolean);
+
+  return (
+    <div
+      className="canvas-block-enter mt-4 overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_24px_48px_rgba(0,0,0,0.55)] first:mt-0"
+      style={{ animationDelay: `${animationIndex * 50}ms`, backgroundColor: "#0d0f14" }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5" style={{ backgroundColor: "#0d0f14" }}>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px]" aria-hidden>
+              🌐
+            </span>
+            <span className="rounded-md border border-purple-500/40 bg-purple-500/12 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-purple-100/95">
+              Web Page Designer
+            </span>
+          </div>
+          <p className="mt-1.5 truncate text-[14px] font-semibold text-slate-100">{businessName}</p>
+          {pageStyle || colorScheme ? (
+            <p className="truncate text-[12px] text-slate-500">
+              {[pageStyle, colorScheme].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 border-b border-white/[0.06] px-3 py-3" style={{ backgroundColor: "#0b0c10" }}>
+        {sections.length ? (
+          sections.map((s, i) => (
+            <span
+              key={`${String(s)}-${i}`}
+              className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-slate-300"
+            >
+              {typeof s === "string" ? s : String(s)}
+            </span>
+          ))
+        ) : (
+          <span className="text-[11px] text-slate-600">No sections listed</span>
+        )}
+      </div>
+
+      <div className="px-3 py-4" style={{ backgroundColor: "#0d0f14" }}>
+        <button
+          type="button"
+          onClick={openCanvas}
+          className="w-full rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-3 text-[13px] font-bold text-white shadow-lg shadow-purple-950/40 transition hover:from-purple-400 hover:to-pink-400"
+        >
+          Open Page Canvas
+        </button>
+        {metaParts.length ? (
+          <p className="mt-3 text-center text-[11px] text-slate-500">{metaParts.join(" · ")}</p>
         ) : null}
       </div>
     </div>
@@ -1733,6 +2027,10 @@ function MessageBlocks({
   onCanvasCardOpen,
   onDataAnalystFollowUp,
   onBusinessAction,
+  onOpenDesignCanvas,
+  onOpenWebPageCanvas,
+  onOpenUIUXCanvas,
+  onOpenArchitectureCanvas,
 }) {
   if (!blocks || !blocks.length) return null;
   const canvasChipActive =
@@ -2316,6 +2614,46 @@ function MessageBlocks({
             />
           );
         }
+        if (kind === "design_solution") {
+          return (
+            <DesignSolutionBlock
+              key={`design-${messageId}-${i}`}
+              block={b}
+              animationIndex={i}
+              onOpenDesignCanvas={onOpenDesignCanvas}
+            />
+          );
+        }
+        if (kind === "web_page_solution") {
+          return (
+            <WebPageSolutionBlock
+              key={`webpage-${messageId}-${i}`}
+              block={b}
+              animationIndex={i}
+              onOpenWebPageCanvas={onOpenWebPageCanvas}
+            />
+          );
+        }
+        if (kind === "uiux_solution") {
+          return (
+            <UIUXSolutionBlock
+              key={`uiux-${messageId}-${i}`}
+              block={b}
+              animationIndex={i}
+              onOpenUIUXCanvas={onOpenUIUXCanvas}
+            />
+          );
+        }
+        if (kind === "architecture_solution") {
+          return (
+            <ArchitectureSolutionBlock
+              key={`arch-${messageId}-${i}`}
+              block={b}
+              animationIndex={i}
+              onOpenArchitectureCanvas={onOpenArchitectureCanvas}
+            />
+          );
+        }
         if (kind === "business_solution") {
           return (
             <Fragment key={`biz-${messageId}-${i}`}>
@@ -2477,6 +2815,10 @@ export default function ChatCenter({
     data_analyst: false,
     document_writer: false,
     business_agent: false,
+    design_agent: false,
+    web_page_designer: false,
+    uiux_prototype: false,
+    architecture_agent: false,
   },
   onToggleTool,
   onMathSolve,
@@ -2499,7 +2841,9 @@ export default function ChatCenter({
   onImageStyleSelect,
   onImageRatioSelect,
   fileAnalystContext = null,
-  onAnalystFile,
+  attachedFile = null,
+  onFileAttached,
+  onFileClear,
   onDataWizardAction,
   onCanvasOpen,
   canvasBusy = false,
@@ -2508,14 +2852,22 @@ export default function ChatCenter({
   canvasLinkedMessageId = null,
   onCanvasChipFocus,
   onBusinessAction,
+  onOpenDesignCanvas,
+  onOpenWebPageCanvas,
+  onOpenUIUXCanvas,
+  onOpenArchitectureCanvas,
+  onOpenToolPicker,
+  selectedMode = TUNDE_MODES[0],
+  onModeChange,
 }) {
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const attachMenuRef = useRef(null);
+  const modeMenuRef = useRef(null);
   const [input, setInput] = useState("");
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [fileBusy, setFileBusy] = useState(false);
-  const toolsRef = useRef(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showModeMenu, setShowModeMenu] = useState(false);
   const [researchThinkingStep, setResearchThinkingStep] = useState(0);
 
   useEffect(() => {
@@ -2526,7 +2878,11 @@ export default function ChatCenter({
         !enabledTools.study_assistant &&
         !enabledTools.data_analyst &&
         !enabledTools.document_writer &&
-        !enabledTools.business_agent)
+        !enabledTools.business_agent &&
+        !enabledTools.design_agent &&
+        !enabledTools.web_page_designer &&
+        !enabledTools.uiux_prototype &&
+        !enabledTools.architecture_agent)
     ) {
       setResearchThinkingStep(0);
       return undefined;
@@ -2543,6 +2899,10 @@ export default function ChatCenter({
     enabledTools.data_analyst,
     enabledTools.document_writer,
     enabledTools.business_agent,
+    enabledTools.design_agent,
+    enabledTools.web_page_designer,
+    enabledTools.uiux_prototype,
+    enabledTools.architecture_agent,
   ]);
 
   const researchProgressFilled = Math.min(16, Math.round(((researchThinkingStep + 1) / 3) * 16));
@@ -2588,16 +2948,47 @@ export default function ChatCenter({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, processing, imageGenWizard?.phase, fileAnalystContext?.fileId]);
 
-  const pickAnalystFile = async (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f || !onAnalystFile) return;
-    setFileBusy(true);
-    try {
-      await onAnalystFile(f);
-    } finally {
-      setFileBusy(false);
+  useEffect(() => {
+    if (!showAttachMenu) return undefined;
+    function onPointerDown(e) {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target)) {
+        setShowAttachMenu(false);
+      }
     }
+    function onKeyDown(e) {
+      if (e.key === "Escape") setShowAttachMenu(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showAttachMenu]);
+
+  useEffect(() => {
+    if (!showModeMenu) return undefined;
+    function onPointerDown(e) {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target)) {
+        setShowModeMenu(false);
+      }
+    }
+    function onKeyDown(e) {
+      if (e.key === "Escape") setShowModeMenu(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showModeMenu]);
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    onFileAttached?.(file);
   };
 
   const inputPlaceholder = (() => {
@@ -2641,21 +3032,23 @@ export default function ChatCenter({
     if (enabledTools.business_agent) {
       return "Describe your market, niche, or competitors — goals, geography, pricing context…";
     }
+    if (enabledTools.web_page_designer) {
+      return "Use the Web Page Designer wizard (open Tools with +) — you can still chat here for notes…";
+    }
+    if (enabledTools.uiux_prototype) {
+      return "Use the UI/UX Prototype wizard (open Tools with +) — you can still chat here for notes…";
+    }
+    if (enabledTools.architecture_agent) {
+      return "Use the Architecture Visualizer wizard (open Tools with +) — you can still chat here for notes…";
+    }
+    if (enabledTools.design_agent) {
+      return "Use the Design Agent wizard (open Tools with +) for the brand pack — you can still chat here for notes…";
+    }
     if (enabledTools.research_agent) {
       return "Describe your research topic — scope, comparison, or angle…";
     }
     return "Message Tunde… (Enter to send, Shift+Enter for new line)";
   })();
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (toolsRef.current && !toolsRef.current.contains(e.target)) {
-        setToolsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const showWelcome = messages.length === 0 && !processing;
 
@@ -2703,8 +3096,18 @@ export default function ChatCenter({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (processing || !connected) return;
     const text = input.trim();
-    if (!text || processing || !connected) return;
+    if (attachedFile && !enabledTools.file_analyst) {
+      onFileClear?.();
+    }
+    if (enabledTools.file_analyst && attachedFile) {
+      onSend?.(text, { attachedFile });
+      setInput("");
+      setToolsOpen(false);
+      return;
+    }
+    if (!text) return;
     if (enabledTools.math_solver && typeof onMathSolve === "function") {
       onMathSolve(text);
       setInput("");
@@ -2777,7 +3180,7 @@ export default function ChatCenter({
       setToolsOpen(false);
       return;
     }
-    onSend(text);
+    onSend?.(text, {});
     setInput("");
     setToolsOpen(false);
   };
@@ -2874,6 +3277,30 @@ export default function ChatCenter({
                 Business Agent
               </p>
             ) : null}
+            {enabledTools.design_agent ? (
+              <p className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-purple-500/45 bg-gradient-to-r from-purple-500/15 to-pink-500/10 px-2 py-1 text-[10px] font-medium text-purple-100/95">
+                <span aria-hidden>🎨</span>
+                Design Agent
+              </p>
+            ) : null}
+            {enabledTools.web_page_designer ? (
+              <p className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-purple-500/45 bg-gradient-to-r from-purple-500/15 to-pink-500/10 px-2 py-1 text-[10px] font-medium text-purple-100/95">
+                <span aria-hidden>🌐</span>
+                Web Page Designer
+              </p>
+            ) : null}
+            {enabledTools.uiux_prototype ? (
+              <p className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-purple-500/45 bg-gradient-to-r from-purple-500/15 to-pink-500/10 px-2 py-1 text-[10px] font-medium text-purple-100/95">
+                <span aria-hidden>🖥️</span>
+                UI/UX Prototype
+              </p>
+            ) : null}
+            {enabledTools.architecture_agent ? (
+              <p className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-amber-500/45 bg-gradient-to-r from-amber-500/15 to-orange-500/10 px-2 py-1 text-[10px] font-medium text-amber-100/95">
+                <span aria-hidden>🏛️</span>
+                Architecture Visualizer
+              </p>
+            ) : null}
           </div>
         </header>
       ) : null}
@@ -2947,6 +3374,14 @@ export default function ChatCenter({
                           }
                         />
                       </>
+                    ) : Array.isArray(m.blocks) &&
+                      m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "design_brief") ? (
+                      <>
+                        <p className="text-[12px] font-semibold text-white/90">Request</p>
+                        <DesignBriefCard
+                          block={m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "design_brief") || {}}
+                        />
+                      </>
                     ) : (m.text || "").trim() ? (
                       <p className="whitespace-pre-wrap">{m.text}</p>
                     ) : null
@@ -2977,6 +3412,10 @@ export default function ChatCenter({
                       onCanvasCardOpen={onCanvasCardOpen}
                       onDataAnalystFollowUp={onDataAnalystFollowUp}
                       onBusinessAction={onBusinessAction}
+                      onOpenDesignCanvas={onOpenDesignCanvas}
+                      onOpenWebPageCanvas={onOpenWebPageCanvas}
+                      onOpenUIUXCanvas={onOpenUIUXCanvas}
+                      onOpenArchitectureCanvas={onOpenArchitectureCanvas}
                     />
                   ) : null}
                   {!isUser &&
@@ -3010,7 +3449,7 @@ export default function ChatCenter({
           />
           <DataAnalystWizard
             enabled={Boolean(enabledTools.file_analyst && fileAnalystContext?.fileId)}
-            disabled={processing || !connected || fileBusy}
+            disabled={processing || !connected}
             onAction={onDataWizardAction}
           />
           {processing && (
@@ -3141,6 +3580,102 @@ export default function ChatCenter({
                       />
                     </div>
                   </div>
+                ) : enabledTools.design_agent ? (
+                  <div className="overflow-hidden rounded-xl rounded-tl-sm border border-purple-800/45 bg-gradient-to-br from-purple-950/55 via-fuchsia-950/35 to-slate-950/95 px-4 py-5 shadow-xl ring-1 ring-purple-900/35">
+                    <p className="text-[14px] font-medium tracking-tight text-white">🎨 Crafting your brand identity…</p>
+                    <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[10px] leading-none text-white sm:text-[11px]">
+                      <span className="min-w-0 break-all">
+                        <span className="text-purple-400">{"█".repeat(researchProgressFilled)}</span>
+                        <span className="text-[#3d4354]">{"░".repeat(16 - researchProgressFilled)}</span>
+                      </span>
+                      <span className="shrink-0 text-purple-100/95">Step {researchThinkingStep + 1}/3</span>
+                    </div>
+                    <p className="mt-4 text-[13px] leading-snug text-purple-50/95">
+                      {
+                        ["Balancing palette, type, and voice", "Generating logo SVG concepts", "Writing guidelines and CSS tokens"][
+                          researchThinkingStep
+                        ]
+                      }
+                    </p>
+                    <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-black/60">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-400 transition-[width] duration-500 ease-out"
+                        style={{ width: `${((researchThinkingStep + 1) / 3) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : enabledTools.web_page_designer ? (
+                  <div className="overflow-hidden rounded-xl rounded-tl-sm border border-purple-800/45 bg-gradient-to-br from-purple-950/55 via-fuchsia-950/35 to-slate-950/95 px-4 py-5 shadow-xl ring-1 ring-purple-900/35">
+                    <p className="text-[14px] font-medium tracking-tight text-white">🌐 Building your landing page…</p>
+                    <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[10px] leading-none text-white sm:text-[11px]">
+                      <span className="min-w-0 break-all">
+                        <span className="text-purple-400">{"█".repeat(researchProgressFilled)}</span>
+                        <span className="text-[#3d4354]">{"░".repeat(16 - researchProgressFilled)}</span>
+                      </span>
+                      <span className="shrink-0 text-purple-100/95">Step {researchThinkingStep + 1}/3</span>
+                    </div>
+                    <p className="mt-4 text-[13px] leading-snug text-purple-50/95">
+                      {
+                        ["Structuring hero and sections", "Applying palette and typography", "Generating responsive HTML"][
+                          researchThinkingStep
+                        ]
+                      }
+                    </p>
+                    <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-black/60">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-400 transition-[width] duration-500 ease-out"
+                        style={{ width: `${((researchThinkingStep + 1) / 3) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : enabledTools.uiux_prototype ? (
+                  <div className="overflow-hidden rounded-xl rounded-tl-sm border border-purple-800/45 bg-gradient-to-br from-purple-950/55 via-fuchsia-950/35 to-slate-950/95 px-4 py-5 shadow-xl ring-1 ring-purple-900/35">
+                    <p className="text-[14px] font-medium tracking-tight text-white">🖥️ Building your UI prototype…</p>
+                    <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[10px] leading-none text-white sm:text-[11px]">
+                      <span className="min-w-0 break-all">
+                        <span className="text-purple-400">{"█".repeat(researchProgressFilled)}</span>
+                        <span className="text-[#3d4354]">{"░".repeat(16 - researchProgressFilled)}</span>
+                      </span>
+                      <span className="shrink-0 text-purple-100/95">Step {researchThinkingStep + 1}/3</span>
+                    </div>
+                    <p className="mt-4 text-[13px] leading-snug text-purple-50/95">
+                      {
+                        ["Mapping screens and components", "Applying layout and theme", "Generating interactive HTML preview"][
+                          researchThinkingStep
+                        ]
+                      }
+                    </p>
+                    <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-black/60">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-400 transition-[width] duration-500 ease-out"
+                        style={{ width: `${((researchThinkingStep + 1) / 3) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : enabledTools.architecture_agent ? (
+                  <div className="overflow-hidden rounded-xl rounded-tl-sm border border-amber-800/45 bg-gradient-to-br from-amber-950/55 via-orange-950/35 to-slate-950/95 px-4 py-5 shadow-xl ring-1 ring-amber-900/35">
+                    <p className="text-[14px] font-medium tracking-tight text-white">🏛️ Building your architectural model…</p>
+                    <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[10px] leading-none text-white sm:text-[11px]">
+                      <span className="min-w-0 break-all">
+                        <span className="text-amber-400">{"█".repeat(researchProgressFilled)}</span>
+                        <span className="text-[#3d4354]">{"░".repeat(16 - researchProgressFilled)}</span>
+                      </span>
+                      <span className="shrink-0 text-amber-100/95">Step {researchThinkingStep + 1}/3</span>
+                    </div>
+                    <p className="mt-4 text-[13px] leading-snug text-amber-50/95">
+                      {
+                        ["Massing volumes and structure", "Materials and sustainability pass", "Generating Three.js scene and reports"][
+                          researchThinkingStep
+                        ]
+                      }
+                    </p>
+                    <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-black/60">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 transition-[width] duration-500 ease-out"
+                        style={{ width: `${((researchThinkingStep + 1) / 3) * 100}%` }}
+                      />
+                    </div>
+                  </div>
                 ) : enabledTools.research_agent ? (
                   <div className="overflow-hidden rounded-xl rounded-tl-sm border border-white/[0.06] bg-[#0f1117] px-4 py-5 shadow-xl">
                     <p className="text-[14px] font-medium tracking-tight text-white">
@@ -3201,6 +3736,49 @@ export default function ChatCenter({
 
       <div className="shrink-0 border-t border-white/[0.06] bg-tunde-surface/95 px-4 py-3 backdrop-blur-md sm:px-6">
         <form onSubmit={handleSubmit} className="mx-auto w-full max-w-3xl">
+          {attachedFile ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "6px 12px",
+                background: "rgba(127,119,221,0.15)",
+                border: "1px solid rgba(127,119,221,0.3)",
+                borderRadius: "8px",
+                marginBottom: "6px",
+                fontSize: "12px",
+                color: "#a78bfa",
+              }}
+            >
+              <span>{fileIcon(attachedFile.name)}</span>
+              <span
+                style={{
+                  flex: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {attachedFile.name}
+              </span>
+              <span style={{ color: "#6b7280", fontSize: "11px" }}>{formatFileSize(attachedFile.size)}</span>
+              <button
+                type="button"
+                onClick={() => onFileClear?.()}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#6b7280",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  padding: "0 2px",
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
           {enabledTools.math_solver ? (
             <p className="mb-2 text-[11px] leading-snug text-amber-500/85">
               Math Solver is on — type a problem below for step-by-step working and a highlighted answer.
@@ -3321,7 +3899,11 @@ export default function ChatCenter({
           !enabledTools.study_assistant &&
           !enabledTools.data_analyst &&
           !enabledTools.document_writer &&
-          !enabledTools.business_agent ? (
+          !enabledTools.business_agent &&
+          !enabledTools.design_agent &&
+          !enabledTools.web_page_designer &&
+          !enabledTools.uiux_prototype &&
+          !enabledTools.architecture_agent ? (
             <p className="mb-2 text-[11px] leading-snug text-amber-400/95">
               Research Agent is on — citations are assistive; verify against primary sources.
             </p>
@@ -3337,9 +3919,97 @@ export default function ChatCenter({
           !enabledTools.study_assistant &&
           !enabledTools.data_analyst &&
           !enabledTools.document_writer &&
-          !enabledTools.research_agent ? (
+          !enabledTools.research_agent &&
+          !enabledTools.design_agent &&
+          !enabledTools.web_page_designer &&
+          !enabledTools.uiux_prototype &&
+          !enabledTools.architecture_agent ? (
             <p className="mb-2 text-[11px] leading-snug text-emerald-300/95">
               Business Agent is on — market maps, SWOT, P/L scenarios, and canvas exports; figures are illustrative.
+            </p>
+          ) : null}
+          {enabledTools.design_agent &&
+          !enabledTools.math_solver &&
+          !enabledTools.science_agent &&
+          !enabledTools.chemistry_agent &&
+          !enabledTools.space_agent &&
+          !enabledTools.health_agent &&
+          !enabledTools.code_assistant &&
+          !enabledTools.translation_agent &&
+          !enabledTools.study_assistant &&
+          !enabledTools.data_analyst &&
+          !enabledTools.document_writer &&
+          !enabledTools.research_agent &&
+          !enabledTools.business_agent &&
+          !enabledTools.web_page_designer &&
+          !enabledTools.uiux_prototype &&
+          !enabledTools.architecture_agent ? (
+            <p className="mb-2 text-[11px] leading-snug text-purple-300/95">
+              Design Agent is on — open the wizard from **Tools** (+ button) for colors, typography, logo and
+              guidelines (Business tier).
+            </p>
+          ) : null}
+          {enabledTools.web_page_designer &&
+          !enabledTools.math_solver &&
+          !enabledTools.science_agent &&
+          !enabledTools.chemistry_agent &&
+          !enabledTools.space_agent &&
+          !enabledTools.health_agent &&
+          !enabledTools.code_assistant &&
+          !enabledTools.translation_agent &&
+          !enabledTools.study_assistant &&
+          !enabledTools.data_analyst &&
+          !enabledTools.document_writer &&
+          !enabledTools.research_agent &&
+          !enabledTools.business_agent &&
+          !enabledTools.design_agent &&
+          !enabledTools.uiux_prototype &&
+          !enabledTools.architecture_agent ? (
+            <p className="mb-2 text-[11px] leading-snug text-purple-300/95">
+              Web Page Designer is on — open the wizard from **Tools** (+ button) for landing pages and sectioned
+              layouts (Business tier).
+            </p>
+          ) : null}
+          {enabledTools.uiux_prototype &&
+          !enabledTools.math_solver &&
+          !enabledTools.science_agent &&
+          !enabledTools.chemistry_agent &&
+          !enabledTools.space_agent &&
+          !enabledTools.health_agent &&
+          !enabledTools.code_assistant &&
+          !enabledTools.translation_agent &&
+          !enabledTools.study_assistant &&
+          !enabledTools.data_analyst &&
+          !enabledTools.document_writer &&
+          !enabledTools.research_agent &&
+          !enabledTools.business_agent &&
+          !enabledTools.design_agent &&
+          !enabledTools.web_page_designer &&
+          !enabledTools.architecture_agent ? (
+            <p className="mb-2 text-[11px] leading-snug text-purple-300/95">
+              UI/UX Prototype is on — open the wizard from **Tools** (+ button) for dashboards, apps, and product
+              screens (Business tier).
+            </p>
+          ) : null}
+          {enabledTools.architecture_agent &&
+          !enabledTools.math_solver &&
+          !enabledTools.science_agent &&
+          !enabledTools.chemistry_agent &&
+          !enabledTools.space_agent &&
+          !enabledTools.health_agent &&
+          !enabledTools.code_assistant &&
+          !enabledTools.translation_agent &&
+          !enabledTools.study_assistant &&
+          !enabledTools.data_analyst &&
+          !enabledTools.document_writer &&
+          !enabledTools.research_agent &&
+          !enabledTools.business_agent &&
+          !enabledTools.design_agent &&
+          !enabledTools.web_page_designer &&
+          !enabledTools.uiux_prototype ? (
+            <p className="mb-2 text-[11px] leading-snug text-amber-300/95">
+              Architecture Visualizer is on — open the wizard from **Tools** (+ button) for 3D massing,
+              sustainability, and materials exploration (Business tier).
             </p>
           ) : null}
           {enabledTools.study_assistant &&
@@ -3398,89 +4068,80 @@ export default function ChatCenter({
                                 ? "border-sky-500/45 shadow-[inset_0_1px_0_rgba(56,189,248,0.08)] focus-within:border-indigo-500/50 focus-within:shadow-[0_0_0_3px_rgba(14,165,233,0.16)]"
                                 : enabledTools.business_agent
                                   ? "border-emerald-500/45 shadow-[inset_0_1px_0_rgba(16,185,129,0.08)] focus-within:border-emerald-400/55 focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.18)]"
-                                  : enabledTools.research_agent
-                                    ? "border-amber-400/45 shadow-[inset_0_1px_0_rgba(250,204,21,0.07)] focus-within:border-amber-400/55 focus-within:shadow-[0_0_0_3px_rgba(250,204,21,0.15)]"
-                                    : "border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus-within:border-violet-500/40 focus-within:shadow-[0_0_0_3px_rgba(124,58,237,0.15)]",
+                                  : enabledTools.design_agent
+                                    ? "border-purple-500/45 shadow-[inset_0_1px_0_rgba(168,85,247,0.08)] focus-within:border-fuchsia-400/55 focus-within:shadow-[0_0_0_3px_rgba(168,85,247,0.18)]"
+                                    : enabledTools.web_page_designer ||
+                                        enabledTools.uiux_prototype ||
+                                        enabledTools.architecture_agent
+                                      ? "border-purple-500/45 shadow-[inset_0_1px_0_rgba(168,85,247,0.08)] focus-within:border-fuchsia-400/55 focus-within:shadow-[0_0_0_3px_rgba(168,85,247,0.18)]"
+                                    : enabledTools.research_agent
+                                      ? "border-amber-400/45 shadow-[inset_0_1px_0_rgba(250,204,21,0.07)] focus-within:border-amber-400/55 focus-within:shadow-[0_0_0_3px_rgba(250,204,21,0.15)]"
+                                      : "border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus-within:border-violet-500/40 focus-within:shadow-[0_0_0_3px_rgba(124,58,237,0.15)]",
               "transition-[box-shadow,border-color] duration-200 ease-out",
             ].join(" ")}
           >
-            <div className="relative flex shrink-0 items-end gap-0.5 self-end pb-1 pl-1" ref={toolsRef}>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.xlsx,.pdf,.txt"
-                className="hidden"
-                onChange={pickAnalystFile}
-              />
+            <div ref={attachMenuRef} className="relative flex shrink-0 items-end gap-0.5 self-end pb-1 pl-1">
+              <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFileSelect} />
+              {showAttachMenu ? (
+                <div
+                  className="absolute bottom-full left-0 z-50 mb-1 min-w-[160px] rounded-[10px] p-1.5"
+                  style={{
+                    background: "#0d1117",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                  }}
+                  role="menu"
+                >
+                  {ATTACH_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full cursor-pointer items-center text-left text-[13px] transition-colors hover:bg-white/[0.06]"
+                      style={{
+                        gap: "10px",
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        color: "#d1d5db",
+                      }}
+                      onClick={() => {
+                        const el = fileInputRef.current;
+                        if (el) {
+                          el.accept = opt.accept === "*" ? "" : opt.accept;
+                          el.click();
+                        }
+                        setShowAttachMenu(false);
+                      }}
+                    >
+                      <span className="shrink-0 text-[15px] leading-none" aria-hidden>
+                        {opt.icon}
+                      </span>
+                      <span>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!enabledTools.file_analyst || processing || !connected || fileBusy}
+                onClick={() => setShowAttachMenu((prev) => !prev)}
+                disabled={processing || !connected || (Boolean(attachedFile) && !enabledTools.file_analyst)}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-35"
-                title={enabledTools.file_analyst ? "Upload file (File Analyst)" : "Turn on File Analyst in + menu"}
-                aria-label="Upload file for File Analyst"
+                title="Attach file"
+                aria-label="Attach file"
+                aria-expanded={showAttachMenu}
               >
                 <span className="text-base leading-none" aria-hidden>
-                  📄
+                  📎
                 </span>
               </button>
               <button
                 type="button"
-                onClick={() => setToolsOpen((o) => !o)}
+                onClick={() => onOpenToolPicker?.()}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-white"
                 title="Tools"
-                aria-expanded={toolsOpen}
               >
                 <span className="text-xl font-light leading-none">+</span>
               </button>
-              {toolsOpen && (
-                <div className="absolute bottom-full left-0 z-20 mb-2 max-h-[min(70vh,28rem)] w-[min(calc(100vw-1.5rem),20rem)] overflow-y-auto overflow-x-hidden rounded-xl border border-white/[0.08] bg-tunde-bg py-2 shadow-2xl shadow-black/40">
-                  {TOOL_MENU_SECTIONS.map((section) => (
-                    <div key={section.category} className="border-b border-white/[0.04] pb-2 last:border-b-0 last:pb-0">
-                      <p className="sticky top-0 z-10 bg-tunde-bg px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
-                        {section.category}
-                      </p>
-                      {section.items.map((item) =>
-                        item.live ? (
-                          <label
-                            key={item.id}
-                            className="flex cursor-pointer items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]"
-                          >
-                            <input
-                              type="checkbox"
-                              className="mt-1 h-3.5 w-3.5 rounded border-slate-600 bg-slate-900/80 text-tunde-accent focus:ring-tunde-accent"
-                              checked={Boolean(enabledTools[item.id])}
-                              onChange={() => onToggleTool?.(item.id)}
-                            />
-                            <span>
-                              <span className="block text-[13px] text-slate-200">{item.label}</span>
-                              <span className="block text-[11px] text-slate-500">{item.hint}</span>
-                            </span>
-                          </label>
-                        ) : (
-                          <div
-                            key={item.id}
-                            className="flex cursor-not-allowed items-start gap-2 px-3 py-2 text-left opacity-50"
-                          >
-                            <span
-                              className="mt-1 h-3.5 w-3.5 shrink-0 rounded border border-slate-700/80 bg-slate-900/50"
-                              aria-hidden
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="flex flex-wrap items-center gap-2">
-                                <span className="text-[13px] text-slate-400">{item.label}</span>
-                                <span className="rounded bg-slate-800/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-                                  Coming soon
-                                </span>
-                              </span>
-                            </span>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
             <textarea
               ref={textareaRef}
@@ -3497,22 +4158,137 @@ export default function ChatCenter({
               rows={1}
               aria-label="Message input"
               className={[
-                "min-h-[48px] max-h-[280px] min-w-0 flex-1 resize-none bg-transparent py-2.5 pl-1 pr-14",
+                "min-h-[48px] max-h-[280px] min-w-0 flex-1 resize-none bg-transparent py-2.5 pl-1 pr-52",
                 "text-sm leading-relaxed text-slate-100",
                 "placeholder:text-slate-600 placeholder:opacity-90",
                 "transition-[height] duration-200 ease-out",
                 "focus:outline-none disabled:opacity-50",
               ].join(" ")}
             />
-            <button
-              type="submit"
-              disabled={!connected || processing || !input.trim()}
-              className="absolute bottom-2 right-2 z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-tunde-accent text-white shadow-md shadow-violet-950/30 transition-[opacity,transform] hover:bg-tunde-accentHover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-              title="Send (Enter)"
-              aria-label="Send message"
-            >
-              <SendIcon className="h-4 w-4" />
-            </button>
+            <div className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5">
+              <div ref={modeMenuRef} className="relative shrink-0">
+                {showModeMenu ? (
+                  <div
+                    className="absolute bottom-full right-0 z-50 mb-2 min-w-[200px] rounded-xl p-2"
+                    style={{
+                      background: "#0d1117",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                    }}
+                    role="menu"
+                  >
+                    {TUNDE_MODES.map((mode) => {
+                      const isSel = selectedMode?.id === mode.id;
+                      return (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          role="menuitem"
+                          className="mb-0.5 flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-3 py-2 text-left last:mb-0"
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            borderLeft: isSel ? `2px solid ${mode.color}` : "2px solid transparent",
+                            background: isSel ? hexToRgba(mode.color, 0.08) : "transparent",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (isSel) {
+                              e.currentTarget.style.background = hexToRgba(mode.color, 0.12);
+                            } else {
+                              e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = isSel
+                              ? hexToRgba(mode.color, 0.08)
+                              : "transparent";
+                          }}
+                          onClick={() => {
+                            onModeChange?.(mode);
+                            setShowModeMenu(false);
+                          }}
+                        >
+                          <span
+                            className="flex items-center gap-1.5 whitespace-nowrap"
+                            style={{ fontSize: "12px", color: "#fff" }}
+                          >
+                            <span className="shrink-0 leading-none" aria-hidden>
+                              {mode.dot}
+                            </span>
+                            <span>{mode.label}</span>
+                            <span
+                              className="rounded-full font-semibold"
+                              style={{
+                                background: hexToRgba(mode.color, 0.15),
+                                color: mode.color,
+                                padding: "1px 6px",
+                                borderRadius: "10px",
+                                fontSize: "10px",
+                              }}
+                            >
+                              {mode.badge}
+                            </span>
+                          </span>
+                          <span className="text-[11px] leading-snug" style={{ color: "#6b7280" }}>
+                            {mode.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setShowModeMenu((prev) => !prev)}
+                  disabled={!connected || processing}
+                  className="flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-white/[0.1] bg-transparent text-white transition-colors hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "5px 10px",
+                    fontSize: "12px",
+                  }}
+                  title={`${selectedMode?.badge ?? "Standard"} mode`}
+                  aria-label="Tunde mode"
+                  aria-expanded={showModeMenu}
+                  aria-haspopup="menu"
+                >
+                  <span className="shrink-0 text-[13px] leading-none" aria-hidden>
+                    {selectedMode?.dot}
+                  </span>
+                  <span>{selectedMode?.label ?? "Tunde"}</span>
+                  <span
+                    className="rounded-full font-semibold"
+                    style={{
+                      background: hexToRgba(selectedMode?.color ?? "#a855f7", 0.15),
+                      color: selectedMode?.color ?? "#a855f7",
+                      padding: "1px 6px",
+                      borderRadius: "10px",
+                      fontSize: "10px",
+                    }}
+                  >
+                    {selectedMode?.badge ?? "Standard"}
+                  </span>
+                  <span className="text-[10px] text-slate-400" aria-hidden>
+                    ▾
+                  </span>
+                </button>
+              </div>
+              <button
+                type="submit"
+                disabled={
+                  !connected ||
+                  processing ||
+                  (!input.trim() && !(attachedFile && enabledTools.file_analyst)) ||
+                  (Boolean(attachedFile) && !enabledTools.file_analyst)
+                }
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-tunde-accent text-white shadow-md shadow-violet-950/30 transition-[opacity,transform] hover:bg-tunde-accentHover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                title="Send (Enter)"
+                aria-label="Send message"
+              >
+                <SendIcon className="h-4 w-4" />
+              </button>
+            </div>
           </div>
           <p className="mt-2 text-center text-[10px] text-slate-600">
             Enter to send · Shift+Enter for new line

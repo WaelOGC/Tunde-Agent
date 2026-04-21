@@ -40,6 +40,10 @@ from tunde_webapp_backend.app.pages_router import share_router as pages_share_ro
 from tunde_webapp_backend.app.auth_router import router as auth_router
 from tunde_webapp_backend.app.db_router import router as db_router
 from tunde_webapp_backend.app.business_router import router as business_router
+from tunde_webapp_backend.app.design_router import router as design_router
+from tunde_webapp_backend.app.web_page_router import router as web_page_router
+from tunde_webapp_backend.app.uiux_router import router as uiux_router
+from tunde_webapp_backend.app.architecture_router import router as architecture_router
 from tunde_webapp_backend.app.db import init_db
 from tunde_webapp_backend.app.seed_agents import seed_default_agents
 
@@ -91,6 +95,10 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(db_router)
     app.include_router(business_router)
+    app.include_router(design_router)
+    app.include_router(web_page_router)
+    app.include_router(uiux_router)
+    app.include_router(architecture_router)
 
     logger.info("tunde backend initialized")
     return app

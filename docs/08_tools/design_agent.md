@@ -95,14 +95,41 @@ Exact bundling (zip vs single files) follows the shipped UI and backend in each 
 
 Beyond **Phase 1 — Brand Identity**, the roadmap envisions additional design capabilities (see [design_agent_spec.md](./design_agent_spec.md) §12 for the master list), including:
 
-| Phase | Direction |
-| --- | --- |
-| **2** | Web page designer |
-| **3** | UI/UX prototype layouts (including evolution of “generate image” style flows) |
-| **4** | 3D architecture visualizer |
-| **5** | Social media kit (templates for Instagram, LinkedIn, X/Twitter, etc.) |
+| Phase | Direction | Status |
+| --- | --- | --- |
+| 1 | Brand Identity | ✅ Live |
+| 2 | Web Page Designer | ✅ Live |
+| 3 | UI/UX Prototype | ⚠️ Live — Preview Coming Soon |
+| 4 | 3D Architecture Visualizer | ❌ Planned |
+| 5 | Social Media Kit | ❌ Planned |
 
 Details and delivery order may change with product prioritization; the spec file remains the engineering source of truth.
+
+---
+
+## Web Page Designer (Phase 2)
+
+Generates a complete, self-contained HTML landing page from a 4-step wizard: Business Info → Audience & Style → Page Structure → Confirm & Generate.
+
+Output: full HTML page with plain CSS (no CDN dependency).
+
+Canvas: Code tab + Export tab + Preview Coming Soon.
+
+Endpoint: `POST /tools/web-page/generate`
+
+---
+
+## UI/UX Prototype (Phase 3)
+
+Generates an interactive HTML prototype (Dashboard, Mobile App, SaaS, Admin Panel, E-commerce, etc.) from a 4-step wizard.
+
+Output: full HTML with plain CSS and vanilla JS.
+
+Canvas: Code tab + Export tab + Preview Coming Soon.
+
+Endpoint: `POST /tools/uiux/generate`
+
+Status: Coming Soon badge in Tool Picker (Preview deferred).
 
 ---
 

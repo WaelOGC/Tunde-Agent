@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function GearIcon({ className }) {
   return (
@@ -41,43 +41,94 @@ function bucketForSession(iso, isLocal) {
   return "older";
 }
 
+const TOOL_EMOJI = {
+  DESIGN: "🎨",
+  DOCS: "📄",
+  BUSINESS: "💼",
+  DATA: "📊",
+  MATH: "🧮",
+  SCIENCE: "🔬",
+  SPACE: "🚀",
+  HEALTH: "❤️",
+  CODE: "💻",
+  RESEARCH: "🔭",
+  STUDY: "📚",
+  TRANSLATE: "🌍",
+  IMAGE: "🖼️",
+  UI_UX: "🖥️",
+  WEB: "🌐",
+};
+
+/** Emoji shown before chat title when `toolUsed` maps to a category (subtle prefix). */
+function toolEmoji(tool) {
+  if (!tool || typeof tool !== "string") return "";
+  const t = tool.toLowerCase();
+  const map = {
+    design_agent: TOOL_EMOJI.DESIGN,
+    web_page_designer: TOOL_EMOJI.WEB,
+    uiux_prototype: TOOL_EMOJI.UI_UX,
+    document_writer: TOOL_EMOJI.DOCS,
+    business_agent: TOOL_EMOJI.BUSINESS,
+    data_analyst: TOOL_EMOJI.DATA,
+    file_analyst: TOOL_EMOJI.DATA,
+    math: TOOL_EMOJI.MATH,
+    math_solver: TOOL_EMOJI.MATH,
+    science: TOOL_EMOJI.SCIENCE,
+    science_agent: TOOL_EMOJI.SCIENCE,
+    chemistry: TOOL_EMOJI.SCIENCE,
+    chemistry_agent: TOOL_EMOJI.SCIENCE,
+    space: TOOL_EMOJI.SPACE,
+    space_agent: TOOL_EMOJI.SPACE,
+    health: TOOL_EMOJI.HEALTH,
+    health_agent: TOOL_EMOJI.HEALTH,
+    code: TOOL_EMOJI.CODE,
+    code_assistant: TOOL_EMOJI.CODE,
+    research: TOOL_EMOJI.RESEARCH,
+    research_agent: TOOL_EMOJI.RESEARCH,
+    study: TOOL_EMOJI.STUDY,
+    study_assistant: TOOL_EMOJI.STUDY,
+    translation: TOOL_EMOJI.TRANSLATE,
+    translation_agent: TOOL_EMOJI.TRANSLATE,
+    vision: TOOL_EMOJI.IMAGE,
+  };
+  return map[t] || "";
+}
+
 function toolBadgeShort(tool) {
   if (!tool || typeof tool !== "string") return "";
   const t = tool.toLowerCase();
   const map = {
     math: "Math",
+    math_solver: "Math",
     science: "Science",
+    science_agent: "Science",
     chemistry: "Chem",
+    chemistry_agent: "Chem",
     space: "Space",
+    space_agent: "Space",
     health: "Health",
+    health_agent: "Health",
     code: "Code",
+    code_assistant: "Code",
     translation: "Translate",
+    translation_agent: "Translate",
     research: "Research",
+    research_agent: "Research",
     study: "Study",
+    study_assistant: "Study",
     data_analyst: "Data",
+    file_analyst: "Files",
+    document_writer: "Docs",
+    vision: "Image",
+    design_agent: "Design",
+    web_page_designer: "Web",
+    uiux_prototype: "UI/UX",
+    business_agent: "Business",
     ceo: "CEO",
     landing: "Canvas",
+    search: "Search",
   };
   return map[t] || tool.slice(0, 10);
-}
-
-/** @param {string | null} iso @param {boolean} isLocal */
-function formatWhen(iso, isLocal) {
-  if (isLocal) return "Now";
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const now = Date.now();
-  const today0 = startOfLocalDay(now);
-  const y0 = today0 - 86400000;
-  const t = d.getTime();
-  const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  if (t >= today0) return timeStr;
-  if (t >= y0) return `Yesterday · ${timeStr}`;
-  if (t >= today0 - 6 * 86400000) {
-    return `${d.toLocaleDateString(undefined, { weekday: "short" })} · ${timeStr}`;
-  }
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default function WorkspaceSidebar({
@@ -87,9 +138,32 @@ export default function WorkspaceSidebar({
   onNewChat,
   onOpenSettings,
   onOpenTundeHub,
+  onRenameChat,
+  onDeleteChat,
   connected,
 }) {
   const [hoverId, setHoverId] = useState(null);
+  const [menuSessionId, setMenuSessionId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const menuRef = useRef(null);
+  /** When Escape cancels rename, ignore the following input `blur` so we do not persist. */
+  const skipRenameBlurRef = useRef(false);
+
+  const confirmRename = useCallback(() => {
+    if (skipRenameBlurRef.current) {
+      skipRenameBlurRef.current = false;
+      return;
+    }
+    if (editingId == null) return;
+    const t = editingTitle.trim();
+    if (!t) {
+      setEditingId(null);
+      return;
+    }
+    onRenameChat?.(editingId, t);
+    setEditingId(null);
+  }, [editingId, editingTitle, onRenameChat]);
 
   const sortedSessions = useMemo(() => {
     const copy = [...(sessions || [])];
@@ -112,6 +186,17 @@ export default function WorkspaceSidebar({
     }
     return g;
   }, [sortedSessions]);
+
+  useEffect(() => {
+    if (!menuSessionId) return undefined;
+    function handleDown(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuSessionId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleDown);
+    return () => document.removeEventListener("mousedown", handleDown);
+  }, [menuSessionId]);
 
   return (
     <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-white/[0.06] bg-tunde-bg">
@@ -142,7 +227,7 @@ export default function WorkspaceSidebar({
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-2">
         <p className="px-2 pb-1.5 text-[11px] font-medium text-slate-600">Chats</p>
         {GROUP_ORDER.map(({ key, label }) => {
           const list = grouped[key] || [];
@@ -155,37 +240,152 @@ export default function WorkspaceSidebar({
                   const active = s.id === activeSessionId;
                   const hovered = hoverId === s.id;
                   const badge = toolBadgeShort(s.toolUsed);
+                  const emoji = toolEmoji(s.toolUsed);
+                  const menuOpen = menuSessionId === s.id;
+                  const isEditing = editingId === s.id;
                   return (
-                    <li key={s.id}>
-                      <button
-                        type="button"
-                        onClick={() => void onSelectSession(s.id)}
-                        onMouseEnter={() => setHoverId(s.id)}
-                        onMouseLeave={() => setHoverId(null)}
+                    <li key={s.id} className="relative">
+                      <div
                         className={[
-                          "flex w-full flex-col rounded-md px-2.5 py-2 text-left transition-colors",
+                          "group flex w-full items-center gap-1 rounded-md px-1 py-1 transition-colors",
                           active
                             ? "bg-white/[0.08] text-white"
                             : hovered
                               ? "bg-white/[0.04] text-slate-200"
                               : "text-slate-500 hover:bg-white/[0.03] hover:text-slate-300",
                         ].join(" ")}
+                        onMouseEnter={() => setHoverId(s.id)}
+                        onMouseLeave={() => setHoverId(null)}
                       >
-                        <div className="flex min-w-0 items-start justify-between gap-2">
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-snug">{s.title}</span>
-                          {badge ? (
-                            <span className="shrink-0 rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-200/90">
-                              {badge}
+                        {isEditing ? (
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-1.5 pr-0">
+                            <input
+                              autoFocus
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  confirmRename();
+                                }
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  skipRenameBlurRef.current = true;
+                                  setEditingId(null);
+                                }
+                              }}
+                              onBlur={() => confirmRename()}
+                              className="min-w-0 flex-1"
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                borderBottom: "1px solid #7F77DD",
+                                color: "white",
+                                fontSize: "12px",
+                                width: "100%",
+                                outline: "none",
+                                padding: "1px 0",
+                              }}
+                              aria-label="Rename chat"
+                            />
+                            {badge ? (
+                              <span className="shrink-0 rounded bg-violet-500/20 px-1 py-0.5 text-[7px] font-semibold uppercase tracking-wide text-violet-200/90">
+                                {badge}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void onSelectSession(s.id)}
+                            className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1.5 pl-1.5 pr-0 text-left"
+                          >
+                            <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                              {emoji ? (
+                                <span className="shrink-0 text-[13px] leading-none" aria-hidden>
+                                  {emoji}
+                                </span>
+                              ) : null}
+                              <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-snug">{s.title}</span>
                             </span>
+                            {badge ? (
+                              <span
+                                className={[
+                                  "shrink-0 rounded bg-violet-500/20 font-semibold uppercase tracking-wide text-violet-200/90",
+                                  emoji ? "px-1 py-0.5 text-[7px]" : "px-1.5 py-0.5 text-[9px]",
+                                ].join(" ")}
+                              >
+                                {badge}
+                              </span>
+                            ) : null}
+                          </button>
+                        )}
+                        <div className="relative shrink-0">
+                          <button
+                            type="button"
+                            className={[
+                              "flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-opacity hover:bg-white/[0.06] hover:text-slate-200",
+                              menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+                            ].join(" ")}
+                            aria-label="Chat options"
+                            aria-expanded={menuOpen}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuSessionId((cur) => (cur === s.id ? null : s.id));
+                            }}
+                          >
+                            <span className="text-base leading-none" aria-hidden>
+                              ···
+                            </span>
+                          </button>
+                          {menuOpen ? (
+                            <div
+                              ref={menuRef}
+                              className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-lg border border-white/[0.1] bg-[#121722] py-1 shadow-xl shadow-black/50"
+                              role="menu"
+                            >
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-slate-200 hover:bg-white/[0.06]"
+                                onClick={() => {
+                                  setMenuSessionId(null);
+                                  setEditingId(s.id);
+                                  setEditingTitle(s.title || "");
+                                }}
+                              >
+                                <span aria-hidden>✏️</span>
+                                Rename
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                title="Coming soon"
+                                className="flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-[12px] text-slate-500"
+                                onClick={() => {
+                                  setMenuSessionId(null);
+                                }}
+                              >
+                                <span aria-hidden>📁</span>
+                                Move to folder
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-rose-200/95 hover:bg-rose-500/10"
+                                onClick={() => {
+                                  setMenuSessionId(null);
+                                  if (!window.confirm("Delete this chat?")) return;
+                                  onDeleteChat?.(s.id);
+                                }}
+                              >
+                                <span aria-hidden>🗑</span>
+                                Delete
+                              </button>
+                            </div>
                           ) : null}
                         </div>
-                        <div className="mt-0.5 flex items-center justify-between gap-2">
-                          <span className="min-w-0 flex-1 truncate text-[11px] text-slate-600">{s.preview}</span>
-                          <span className="shrink-0 text-[10px] text-slate-600 tabular-nums">
-                            {formatWhen(s.startedAt, s.isLocalDraft)}
-                          </span>
-                        </div>
-                      </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -206,16 +406,7 @@ export default function WorkspaceSidebar({
           </button>
         ) : null}
 
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-slate-200"
-            title="Settings"
-            aria-label="Open settings"
-          >
-            <GearIcon className="h-[18px] w-[18px]" />
-          </button>
+        <div className="flex items-center justify-between gap-2 pt-0.5">
           <div className="flex items-center gap-2 rounded-md px-2 py-1 text-[11px] text-slate-500">
             <span
               className={[
@@ -226,6 +417,15 @@ export default function WorkspaceSidebar({
             />
             <span>{connected ? "Live" : "Offline"}</span>
           </div>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-slate-200"
+            title="Settings"
+            aria-label="Open settings"
+          >
+            <GearIcon className="h-[18px] w-[18px]" />
+          </button>
         </div>
       </div>
     </aside>

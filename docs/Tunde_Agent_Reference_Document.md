@@ -1,11 +1,15 @@
 # Tunde Agent — Comprehensive Reference Document
 
 **Version:** 1.2  
-**Last Updated:** 2026-04-20  
+**Last Updated:** 2026-04-21  
 **Status:** Active Development (Pre-Release)  
 **Legend:** ✅ Done | ⚠️ Bugs/Partial | ⏳ Planned | ❌ Not Started  
 
-**Recent session (2026-04-20):** **Fixes:** (1) Tool outputs no longer mirror into every chat — `patchSessionMessages` in `App.jsx` now respects **`activeSessionIdRef.current`** together with `sessionId`. (2) **Business Agent** label — user-facing copy in `ChatCenter.jsx`, `App.jsx`, `BusinessAnalysisCanvas.jsx`, `BusinessSimulateModal.jsx`, `businessReportHtml.js`, and `canvasExportCore.js` says **Business Agent**; **`TundeHub.jsx`** still uses **Tunde Agent** as the product name. **Also this session:** Business Agent first slice (routes `/tools/business/*`, model `business_research`, `/db/business-research*`, Canvas + chat — bundle before ship). **Document Writer (2026-04-20):** section tabs (`DOCUMENT_SECTION_SPLIT`), scroll reset (`docBodyScrollRef` / `useLayoutEffect`), duplicate-tab merge/dedupe, `stripLeadingDuplicateDocTitle`, GFM tables (`document_writer.py` prompt + `DocumentWriterMarkdownTable` / `segmentDocumentWriterMarkdown` in `ChatCenter.jsx`). Removed `main.py` OAuth client id debug print.
+**Recent session (2026-04-21):** Design Agent Phase 1 (**Brand Identity**) ✅ complete. Phase 2 (**Web Page Designer**) ✅ complete. Phase 3 (**UI/UX Prototype**) ⚠️ partial — Preview deferred. Dashboard redesigned: **Tool Picker Modal** replaces sidebar tool buttons. **Provider names hidden from UI.** **WorkspaceSidebar** simplified — chat history + Tunde Hub only.
+
+**Architecture Visualizer (Phase 4):** ⚠️ Partial — Backend + DB + Wizard + Canvas complete. Sustainability Score, Materials Report, Disaster Assessment all live. **3D View Coming Soon.** fal.ai + Hyper3D Rodin integrated (`glb_url`). Dashboard updates: inline chat rename, tool emoji in sidebar, file attach popup menu, Tunde Mode selector (Standard/Pro/Fast UI-only).
+
+**Earlier session (2026-04-20):** **Fixes:** (1) Tool outputs no longer mirror into every chat — `patchSessionMessages` in `App.jsx` now respects **`activeSessionIdRef.current`** together with `sessionId`. (2) **Business Agent** label — user-facing copy in `ChatCenter.jsx`, `App.jsx`, `BusinessAnalysisCanvas.jsx`, `BusinessSimulateModal.jsx`, `businessReportHtml.js`, and `canvasExportCore.js` says **Business Agent**; **`TundeHub.jsx`** still uses **Tunde Agent** as the product name. **Also:** Business Agent first slice (routes `/tools/business/*`, model `business_research`, `/db/business-research*`, Canvas + chat — bundle before ship). **Document Writer (2026-04-20):** section tabs (`DOCUMENT_SECTION_SPLIT`), scroll reset (`docBodyScrollRef` / `useLayoutEffect`), duplicate-tab merge/dedupe, `stripLeadingDuplicateDocTitle`, GFM tables (`document_writer.py` prompt + `DocumentWriterMarkdownTable` / `segmentDocumentWriterMarkdown` in `ChatCenter.jsx`). Removed `main.py` OAuth client id debug print.
 
 ---
 
@@ -520,7 +524,9 @@ Production (Docker):
 | Tool | Backend | Database | Frontend | Status |
 |------|:-------:|:--------:|:--------:|:------:|
 | Business Agent | ⚠️ | ⚠️ | ⚠️ | ⚠️ First slice (research / simulate / accounting upload / Canvas); **commit as one bundle** |
-| Design Agent | ❌ | ❌ | ❌ | ⚠️ In Development |
+| Design Agent — Brand Identity | ✅ | ✅ | ✅ | ✅ Done |
+| Web Page Designer | ✅ | ✅ | ✅ | ✅ Done |
+| UI/UX Prototype | ✅ | ✅ | ✅ | ⚠️ Partial — Preview deferred; Coming Soon in Tool Picker |
 | Creative Writer | ❌ | ❌ | ❌ | ⏳ Next |
 
 ### Infrastructure
@@ -612,6 +618,46 @@ POST /tools/business/simulate
 
 POST /tools/business/accounting/upload  (multipart/form-data: user_id, file)
   Response: { "ok", "research_id", ...parsed accounting fields }
+
+POST /tools/design/brand-identity
+  Request: { brand_name, industry, description, audience,
+             tone, color_mood, logo_style, user_id?, session_id? }
+  Response: BrandIdentityResponse
+    { brand_id, brand_name, tagline, palette, typography,
+      logo_svg, logo_icon_svg, guidelines, css_variables,
+      created_at }
+
+POST /tools/web-page/generate
+  Request: { business_name, industry, description, audience,
+             page_style, color_scheme, sections[], cta_text,
+             user_id?, session_id? }
+  Response: WebPageDesignResponse
+    { page_id, business_name, page_title, html_content,
+      industry, page_style, color_scheme, sections,
+      created_at }
+
+POST /tools/uiux/generate
+  Request: { product_name, product_type, industry,
+             description, platform, ui_style, color_theme,
+             screens[], components[], primary_action,
+             user_id?, session_id? }
+  Response: UIUXPrototypeResponse
+    { proto_id, product_name, product_type, platform,
+      ui_style, color_theme, screens, components,
+      html_content, created_at }
+
+POST /tools/architecture/generate
+  Request: { project_name, building_type, description,
+             location_climate, total_area, floors,
+             floor_height, rooms[], special_requirements,
+             style, structure_type, facade_material,
+             roof_type, user_id?, session_id? }
+  Response: { project_id, project_name, building_type,
+              style, structure_type, facade_material,
+              roof_type, total_area, floors,
+              location_climate, threejs_code, glb_url,
+              sustainability, materials_report,
+              disaster_assessment, created_at }
 ```
 
 ### Database Endpoints
@@ -628,6 +674,14 @@ GET    /db/canvas-pages/{message_id}
 PUT    /db/canvas-pages/{canvas_id}
 GET    /db/business-research?user_id=...&session_id?=&limit?
 GET    /db/business-research/{research_id}
+GET    /db/design-brands?user_id=...
+GET    /db/design-brands/{brand_id}
+GET    /db/web-pages?user_id=...
+GET    /db/web-pages/{page_id}
+GET    /db/uiux-prototypes?user_id=...
+GET    /db/uiux-prototypes/{proto_id}
+GET    /db/architecture-projects?user_id=...
+GET    /db/architecture-projects/{project_id}
 ```
 
 ### Pages Endpoints

@@ -1,3 +1,4 @@
 # Install from repository root so .env and src/ layout resolve correctly.
 # Equivalent to: py -m pip install -e ".[dev]"
 -e .[dev]
+fal-client>=0.7.0

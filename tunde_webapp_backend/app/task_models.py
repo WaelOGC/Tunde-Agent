@@ -9,7 +9,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +28,10 @@ class TaskType(str, Enum):
     """Orchestrator / tool routing identifiers."""
 
     BUSINESS_AGENT = "BUSINESS_AGENT"
+    DESIGN_AGENT = "design_agent"
+    WEB_PAGE_DESIGNER = "web_page_designer"
+    UIUX_PROTOTYPE = "uiux_prototype"
+    ARCHITECTURE_AGENT = "architecture_agent"
 
 
 def utc_iso() -> str:
@@ -324,3 +329,121 @@ class BusinessResearchSaveBody(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     accounting_snapshot: dict[str, Any] | None = None
 
+
+class BrandIdentityRequest(BaseModel):
+    brand_name: str = Field(..., min_length=1, max_length=100)
+    industry: str = Field(..., max_length=256)
+    description: str = Field(..., min_length=5, max_length=500)
+    audience: str = Field(default="", max_length=200)
+    tone: str = Field(default="", max_length=128)
+    color_mood: str = Field(default="", max_length=128)
+    logo_style: str = Field(default="", max_length=128)
+    user_id: str | None = Field(default=None, max_length=128)
+    session_id: uuid.UUID | None = None
+
+
+class BrandIdentityResponse(BaseModel):
+    brand_id: str
+    brand_name: str
+    tagline: str
+    palette: list[dict[str, str]]
+    typography: dict[str, Any]
+    logo_svg: str
+    logo_icon_svg: str
+    guidelines: dict[str, Any]
+    css_variables: str
+    provider: str = "gemini"
+    created_at: str
+
+
+class WebPageDesignRequest(BaseModel):
+    business_name: str       = Field(..., min_length=1, max_length=100)
+    industry:      str       = Field(...)
+    description:   str       = Field(..., min_length=5, max_length=500)
+    audience:      str       = Field(..., max_length=200)
+    page_style:    str       = Field(...)
+    color_scheme:  str       = Field(...)
+    sections:      List[str] = Field(default=["Hero", "Features", "About", "CTA"])
+    cta_text:      str       = Field(default="Get Started", max_length=50)
+    user_id:       Optional[str]  = None
+    session_id:    Optional[UUID] = None
+
+class WebPageDesignResponse(BaseModel):
+    page_id:       str
+    business_name: str
+    page_title:    str
+    html_content:  str
+    industry:      str
+    page_style:    str
+    color_scheme:  str
+    sections:      List[str]
+    provider:      str = "gemini"
+    created_at:    str
+
+
+class UIUXPrototypeRequest(BaseModel):
+    product_name:   str       = Field(..., min_length=1, max_length=100)
+    product_type:   str       = Field(...)
+    industry:       str       = Field(...)
+    description:    str       = Field(..., min_length=5, max_length=500)
+    platform:       str       = Field(...)
+    ui_style:       str       = Field(...)
+    color_theme:    str       = Field(...)
+    screens:        List[str] = Field(default=["Overview", "Analytics", "Settings"])
+    components:     List[str] = Field(default=["Navigation Bar", "Stat Cards"])
+    primary_action: str       = Field(default="Get Started", max_length=50)
+    user_id:        Optional[str]  = None
+    session_id:     Optional[UUID] = None
+
+
+class UIUXPrototypeResponse(BaseModel):
+    proto_id:     str
+    product_name: str
+    product_type: str
+    platform:     str
+    ui_style:     str
+    color_theme:  str
+    screens:      List[str]
+    components:   List[str]
+    html_content: str
+    provider:     str = "gemini"
+    created_at:   str
+
+
+class ArchitectureProjectRequest(BaseModel):
+    project_name:         str   = Field(..., min_length=1, max_length=100)
+    building_type:        str   = Field(...)
+    description:          str   = Field(..., min_length=5, max_length=1000)
+    location_climate:     str   = Field(...)
+    total_area:           float = Field(..., gt=0)
+    floors:               int   = Field(..., ge=1, le=200)
+    floor_height:         float = Field(default=3.0, ge=2.0, le=10.0)
+    rooms:                List[str] = Field(
+        default=["Living Room", "Bedroom", "Kitchen", "Bathroom"]
+    )
+    special_requirements: Optional[str] = Field(None, max_length=500)
+    style:                str   = Field(...)
+    structure_type:       str   = Field(...)
+    facade_material:      str   = Field(...)
+    roof_type:            str   = Field(...)
+    user_id:              Optional[str]  = None
+    session_id:           Optional[UUID] = None
+
+class ArchitectureProjectResponse(BaseModel):
+    project_id:          str
+    project_name:        str
+    building_type:       str
+    style:               str
+    structure_type:      str
+    facade_material:     str
+    roof_type:           str
+    total_area:          float
+    floors:              int
+    location_climate:    str
+    threejs_code:        str
+    sustainability:      dict[str, Any]
+    materials_report:    dict[str, Any]
+    disaster_assessment: dict[str, Any]
+    provider:            str = "gemini"
+    glb_url:             str = ""
+    created_at:          str

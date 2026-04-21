@@ -16,6 +16,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
 from tunde_webapp_backend.app.db import db_session
+from .models.brand_identity import BrandIdentity
+from .models.web_page_design import WebPageDesign
+from .models.uiux_prototype import UIUXPrototype
+from .models.architecture_project import ArchitectureProject
 from tunde_webapp_backend.app.models.business_research import BusinessResearch
 from tunde_webapp_backend.app.models.canvas_page import CanvasPage
 from tunde_webapp_backend.app.models.conversation import Conversation
@@ -108,6 +112,36 @@ def create_or_get_conversation(body: ConversationCreateBody) -> dict:
         session.add(row)
         session.flush()
         return {"ok": True, "conversation": _conv_out(row), "created": True}
+
+
+class ConversationUpdateTitleBody(BaseModel):
+    title: str = Field(..., max_length=512)
+
+
+@router.patch("/conversations/{conv_id}")
+def patch_conversation_title(conv_id: uuid.UUID, body: ConversationUpdateTitleBody) -> dict:
+    with db_session() as session:
+        row = session.get(Conversation, conv_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        new_title = body.title.strip()
+        row.title = new_title or None
+        session.add(row)
+        session.flush()
+        session.commit()
+        return {"ok": True, "conv_id": str(conv_id), "title": row.title}
+
+
+@router.delete("/conversations/{conv_id}")
+def delete_conversation(conv_id: uuid.UUID) -> dict:
+    with db_session() as session:
+        row = session.get(Conversation, conv_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        session.delete(row)
+        session.flush()
+        session.commit()
+        return {"ok": True, "conv_id": str(conv_id)}
 
 
 class MessageCreateBody(BaseModel):
@@ -347,6 +381,235 @@ def get_business_research(research_id: uuid.UUID) -> dict:
         if row is None:
             raise HTTPException(status_code=404, detail="Business research record not found.")
         return {"ok": True, "item": _business_research_out(row)}
+
+
+def _design_brand_list_item(row: BrandIdentity) -> dict:
+    return {
+        "brand_id": str(row.brand_id),
+        "brand_name": row.brand_name,
+        "industry": row.industry,
+        "tone": row.tone,
+        "provider": row.provider,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/design-brands")
+def list_design_brands(
+    user_id: str = Query(..., min_length=1, max_length=128),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    """List persisted Design Agent brand identities for a user (newest first)."""
+    with db_session() as session:
+        rows = session.scalars(
+            select(BrandIdentity)
+            .where(BrandIdentity.user_id == user_id)
+            .order_by(desc(BrandIdentity.created_at))
+            .limit(limit)
+        ).all()
+        return {"ok": True, "items": [_design_brand_list_item(r) for r in rows]}
+
+
+@router.get("/design-brands/{brand_id}")
+def get_design_brand(brand_id: uuid.UUID) -> dict:
+    with db_session() as session:
+        row = session.get(BrandIdentity, brand_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Brand identity record not found.")
+        payload: dict = {}
+        try:
+            payload = json.loads(row.payload_json or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        merged = {**payload, "brand_id": str(row.brand_id)}
+        return {"ok": True, "item": merged}
+
+
+def _web_page_list_item(row: WebPageDesign) -> dict:
+    return {
+        "page_id": row.page_id,
+        "business_name": row.business_name,
+        "industry": row.industry,
+        "page_style": row.page_style,
+        "provider": row.provider,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/web-pages")
+def list_web_pages(
+    user_id: str = Query(..., min_length=1, max_length=128),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    """List persisted Web Page Designer records for a user (newest first)."""
+    with db_session() as session:
+        rows = session.scalars(
+            select(WebPageDesign)
+            .where(WebPageDesign.user_id == user_id)
+            .order_by(desc(WebPageDesign.created_at))
+            .limit(limit)
+        ).all()
+        return {"ok": True, "items": [_web_page_list_item(r) for r in rows]}
+
+
+@router.get("/web-pages/{page_id}")
+def get_web_page(page_id: str) -> dict:
+    with db_session() as session:
+        row = session.get(WebPageDesign, page_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Web page record not found.")
+        sections_val: object = row.sections_json or "[]"
+        try:
+            sections_val = json.loads(row.sections_json or "[]")
+        except json.JSONDecodeError:
+            sections_val = row.sections_json or "[]"
+        return {
+            "ok": True,
+            "item": {
+                "page_id": row.page_id,
+                "business_name": row.business_name,
+                "industry": row.industry,
+                "page_style": row.page_style,
+                "color_scheme": row.color_scheme,
+                "sections_json": sections_val,
+                "html_content": row.html_content,
+                "provider": row.provider,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            },
+        }
+
+
+def _uiux_prototype_list_item(row: UIUXPrototype) -> dict:
+    return {
+        "proto_id": row.proto_id,
+        "product_name": row.product_name,
+        "product_type": row.product_type,
+        "platform": row.platform,
+        "ui_style": row.ui_style,
+        "provider": row.provider,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/uiux-prototypes")
+def list_uiux_prototypes(
+    user_id: str = Query(..., min_length=1, max_length=128),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    """List persisted UI/UX Prototype records for a user (newest first)."""
+    with db_session() as session:
+        rows = session.scalars(
+            select(UIUXPrototype)
+            .where(UIUXPrototype.user_id == user_id)
+            .order_by(desc(UIUXPrototype.created_at))
+            .limit(limit)
+        ).all()
+        return {"ok": True, "items": [_uiux_prototype_list_item(r) for r in rows]}
+
+
+@router.get("/uiux-prototypes/{proto_id}")
+def get_uiux_prototype(proto_id: str) -> dict:
+    with db_session() as session:
+        row = session.get(UIUXPrototype, proto_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="UI/UX prototype record not found.")
+        screens_val: object = row.screens_json or "[]"
+        try:
+            screens_val = json.loads(row.screens_json or "[]")
+        except json.JSONDecodeError:
+            screens_val = row.screens_json or "[]"
+        components_val: object = row.components_json or "[]"
+        try:
+            components_val = json.loads(row.components_json or "[]")
+        except json.JSONDecodeError:
+            components_val = row.components_json or "[]"
+        return {
+            "ok": True,
+            "item": {
+                "proto_id": row.proto_id,
+                "product_name": row.product_name,
+                "product_type": row.product_type,
+                "platform": row.platform,
+                "ui_style": row.ui_style,
+                "color_theme": row.color_theme,
+                "screens_json": screens_val,
+                "components_json": components_val,
+                "html_content": row.html_content,
+                "provider": row.provider,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            },
+        }
+
+
+def _architecture_project_list_item(row: ArchitectureProject) -> dict:
+    return {
+        "project_id": row.project_id,
+        "project_name": row.project_name,
+        "building_type": row.building_type,
+        "style": row.style,
+        "total_area": row.total_area,
+        "floors": row.floors,
+        "provider": row.provider,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/architecture-projects")
+def list_architecture_projects(
+    user_id: str = Query(..., min_length=1, max_length=128),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    """List persisted Architecture Visualizer records for a user (newest first)."""
+    with db_session() as session:
+        rows = session.scalars(
+            select(ArchitectureProject)
+            .where(ArchitectureProject.user_id == user_id)
+            .order_by(desc(ArchitectureProject.created_at))
+            .limit(limit)
+        ).all()
+        return {"ok": True, "items": [_architecture_project_list_item(r) for r in rows]}
+
+
+@router.get("/architecture-projects/{project_id}")
+def get_architecture_project(project_id: str) -> dict:
+    with db_session() as session:
+        row = session.get(ArchitectureProject, project_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Architecture project record not found.")
+
+        def _parse_json(text: str | None, fallback: dict) -> object:
+            raw = text if isinstance(text, str) else "{}"
+            try:
+                out = json.loads(raw or "{}")
+                return out if isinstance(out, dict) else fallback
+            except json.JSONDecodeError:
+                return fallback
+
+        sustainability = _parse_json(row.sustainability_json, {})
+        materials_report = _parse_json(row.materials_json, {})
+        disaster_assessment = _parse_json(row.disaster_json, {})
+
+        return {
+            "ok": True,
+            "item": {
+                "project_id": row.project_id,
+                "project_name": row.project_name,
+                "building_type": row.building_type,
+                "style": row.style,
+                "structure_type": row.structure_type,
+                "facade_material": row.facade_material,
+                "roof_type": row.roof_type,
+                "total_area": row.total_area,
+                "floors": row.floors,
+                "location_climate": row.location_climate,
+                "threejs_code": row.threejs_code,
+                "sustainability": sustainability,
+                "materials_report": materials_report,
+                "disaster_assessment": disaster_assessment,
+                "provider": row.provider,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            },
+        }
 
 
 def _generated_image_out(row: GeneratedImage) -> dict:

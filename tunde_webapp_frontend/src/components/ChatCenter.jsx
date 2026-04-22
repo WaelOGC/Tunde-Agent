@@ -17,6 +17,11 @@ import { AssistantFormattedText } from "../utils/AssistantFormattedText";
 import { stripExecutiveSummary } from "../utils/executiveText";
 import { prepareAssistantMarkdown, segmentMarkdownPipeTables } from "../utils/markdownTables";
 
+/** Welcome empty-state copy (typewriter animation: greeting, then tagline). */
+const WELCOME_GREETING = "Hello, how can I help?";
+const WELCOME_TAGLINE =
+  "Ask me anything — I'll assign the right agents to your task.";
+
 /** Split on markdown ATX headings after a newline — `#` through `######` so #### subsections become their own chunk (fixes missing section tabs vs. API `sections`). */
 const DOCUMENT_SECTION_SPLIT = /\r?\n(?=#{1,6}\s+)/;
 
@@ -112,6 +117,290 @@ function Avatar({ label, className }) {
       ].join(" ")}
     >
       {label}
+    </div>
+  );
+}
+
+const FEEDBACK_DISLIKE_REASONS = [
+  "Not factually correct",
+  "Didn't follow instructions",
+  "Offensive / Unsafe",
+  "Wrong language",
+  "Other",
+];
+
+const FEEDBACK_REGENERATE_OPTIONS = ["↕ Longer", "↕ Shorter", "↺ Try again"];
+
+const FEEDBACK_POPUP_ROW = {
+  width: "100%",
+  padding: "10px 14px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(255,255,255,0.03)",
+  color: "#d1d5db",
+  fontSize: "13px",
+  cursor: "pointer",
+  marginBottom: "6px",
+  textAlign: "left",
+  boxSizing: "border-box",
+};
+
+function FeedbackBar({ messageId, text, onFeedback }) {
+  const [voted, setVoted] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [showDislikeMenu, setShowDislikeMenu] = useState(false);
+  const [showRegenerateMenu, setShowRegenerateMenu] = useState(false);
+  const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
+  const feedbackRootRef = useRef(null);
+  const dislikePopupRef = useRef(null);
+  const regeneratePopupRef = useRef(null);
+  const dislikeBtnRef = useRef(null);
+  const regenerateBtnRef = useRef(null);
+
+  useEffect(() => {
+    if (!showDislikeMenu && !showRegenerateMenu) return undefined;
+    const onDocMouseDown = (e) => {
+      const root = feedbackRootRef.current;
+      if (root && !root.contains(e.target)) {
+        setShowDislikeMenu(false);
+        setShowRegenerateMenu(false);
+      }
+    };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setShowDislikeMenu(false);
+        setShowRegenerateMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showDislikeMenu, showRegenerateMenu]);
+
+  const handleVoteUp = () => {
+    console.log("[FeedbackBar] vote:", "up", "messageId:", messageId, "onFeedback:", typeof onFeedback);
+    setShowDislikeMenu(false);
+    setShowRegenerateMenu(false);
+    setVoted("up");
+    onFeedback?.(messageId, "up");
+  };
+
+  const handleDislikeReason = (option) => {
+    console.log("[FeedbackBar] vote:", "down", "reason:", option, "messageId:", messageId);
+    setVoted("down");
+    onFeedback?.(messageId, "down", option);
+    setShowDislikeMenu(false);
+  };
+
+  const handleRegenerateOption = (option) => {
+    onFeedback?.(messageId, "regenerate", option);
+    setShowRegenerateMenu(false);
+  };
+
+  const handleCopy = () => {
+    console.log("[FeedbackBar] copy, text length:", (text || "").length);
+    navigator.clipboard.writeText(text || "");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openDislikeMenu = () => {
+    const rect = dislikeBtnRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPopupPos({
+        top: rect.top - 8,
+        left: rect.left,
+      });
+    }
+    setShowRegenerateMenu(false);
+    setShowDislikeMenu(true);
+  };
+
+  const openRegenerateMenu = () => {
+    const rect = regenerateBtnRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPopupPos({
+        top: rect.top - 8,
+        left: rect.left,
+      });
+    }
+    setShowDislikeMenu(false);
+    setShowRegenerateMenu(true);
+  };
+
+  const iconBtn = (onClick, title, active, color, svg, btnRef = null) => (
+    <button
+      ref={btnRef}
+      type="button"
+      onClick={onClick}
+      title={title}
+      style={{
+        background: active ? color + "22" : "transparent",
+        border: "none",
+        cursor: "pointer",
+        padding: "5px",
+        borderRadius: "6px",
+        color: active ? color : "#cbd5e1",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "all 0.15s",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+        e.currentTarget.style.color = "white";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = active ? color + "22" : "transparent";
+        e.currentTarget.style.color = active ? color : "#cbd5e1";
+      }}
+    >
+      {svg}
+    </button>
+  );
+
+  const CopyIcon = copied ? (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ) : (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+
+  const ThumbUpIcon = (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" />
+      <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+    </svg>
+  );
+
+  const ThumbDownIcon = (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z" />
+      <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+    </svg>
+  );
+
+  const RegenerateIcon = (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 .49-3.5" />
+    </svg>
+  );
+
+  const popupPanelStyle = {
+    position: "fixed",
+    top: popupPos.top,
+    left: popupPos.left,
+    transform: "translateY(-100%)",
+    zIndex: 9999,
+    background: "#1a1f2e",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: "12px",
+    padding: "16px",
+    minWidth: "280px",
+    boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+  };
+
+  return (
+    <div ref={feedbackRootRef} style={{ position: "relative", marginTop: "6px" }}>
+      {showDislikeMenu ? (
+        <div ref={dislikePopupRef} style={popupPanelStyle}>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setShowDislikeMenu(false)}
+            style={{
+              position: "absolute",
+              top: "10px",
+              right: "10px",
+              border: "none",
+              background: "transparent",
+              color: "#9ca3af",
+              cursor: "pointer",
+              fontSize: "18px",
+              lineHeight: 1,
+              padding: "4px",
+            }}
+          >
+            ×
+          </button>
+          <p style={{ margin: "0 28px 4px 0", color: "#fff", fontWeight: 600, fontSize: "14px" }}>
+            What went wrong?
+          </p>
+          <p style={{ margin: "0 0 12px 0", color: "#6b7280", fontSize: "12px" }}>
+            Your feedback helps improve Tunde.
+          </p>
+          {FEEDBACK_DISLIKE_REASONS.map((label, i) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => handleDislikeReason(label)}
+              style={{
+                ...FEEDBACK_POPUP_ROW,
+                marginBottom: i === FEEDBACK_DISLIKE_REASONS.length - 1 ? 0 : "6px",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {showRegenerateMenu ? (
+        <div ref={regeneratePopupRef} style={popupPanelStyle}>
+          {FEEDBACK_REGENERATE_OPTIONS.map((label, i) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => handleRegenerateOption(label)}
+              style={{
+                ...FEEDBACK_POPUP_ROW,
+                marginBottom: i === FEEDBACK_REGENERATE_OPTIONS.length - 1 ? 0 : "6px",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "2px",
+          opacity: 1,
+        }}
+      >
+        {iconBtn(handleCopy, copied ? "Copied!" : "Copy", copied, "#10b981", CopyIcon)}
+        {iconBtn(handleVoteUp, "Helpful", voted === "up", "#10b981", ThumbUpIcon)}
+        {iconBtn(
+          openDislikeMenu,
+          "Not helpful",
+          voted === "down" || showDislikeMenu,
+          "#ef4444",
+          ThumbDownIcon,
+          dislikeBtnRef
+        )}
+        {iconBtn(openRegenerateMenu, "Regenerate", showRegenerateMenu, "#a855f7", RegenerateIcon, regenerateBtnRef)}
+      </div>
     </div>
   );
 }
@@ -2859,6 +3148,7 @@ export default function ChatCenter({
   onOpenToolPicker,
   selectedMode = TUNDE_MODES[0],
   onModeChange,
+  onMessageFeedback,
 }) {
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -2869,6 +3159,8 @@ export default function ChatCenter({
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [researchThinkingStep, setResearchThinkingStep] = useState(0);
+  const [welcomeGreetingTyped, setWelcomeGreetingTyped] = useState("");
+  const [welcomeTaglineTyped, setWelcomeTaglineTyped] = useState("");
 
   useEffect(() => {
     if (
@@ -3051,6 +3343,74 @@ export default function ChatCenter({
   })();
 
   const showWelcome = messages.length === 0 && !processing;
+
+  useEffect(() => {
+    if (!showWelcome) {
+      setWelcomeGreetingTyped("");
+      setWelcomeTaglineTyped("");
+      return undefined;
+    }
+    setWelcomeGreetingTyped("");
+    setWelcomeTaglineTyped("");
+
+    const CHAR_MS = 28;
+    const START_DELAY_MS = 400;
+    const BETWEEN_MS = 280;
+
+    let cancelled = false;
+    let startTimeoutId = null;
+    let betweenTimeoutId = null;
+    let greetingIntervalId = null;
+    let taglineIntervalId = null;
+
+    const clearGreetingInterval = () => {
+      if (greetingIntervalId != null) {
+        window.clearInterval(greetingIntervalId);
+        greetingIntervalId = null;
+      }
+    };
+    const clearTaglineInterval = () => {
+      if (taglineIntervalId != null) {
+        window.clearInterval(taglineIntervalId);
+        taglineIntervalId = null;
+      }
+    };
+
+    const runTagline = () => {
+      if (cancelled) return;
+      let i = 0;
+      taglineIntervalId = window.setInterval(() => {
+        if (cancelled) return;
+        i += 1;
+        setWelcomeTaglineTyped(WELCOME_TAGLINE.slice(0, i));
+        if (i >= WELCOME_TAGLINE.length) clearTaglineInterval();
+      }, CHAR_MS);
+    };
+
+    const runGreeting = () => {
+      if (cancelled) return;
+      let i = 0;
+      greetingIntervalId = window.setInterval(() => {
+        if (cancelled) return;
+        i += 1;
+        setWelcomeGreetingTyped(WELCOME_GREETING.slice(0, i));
+        if (i >= WELCOME_GREETING.length) {
+          clearGreetingInterval();
+          betweenTimeoutId = window.setTimeout(runTagline, BETWEEN_MS);
+        }
+      }, CHAR_MS);
+    };
+
+    startTimeoutId = window.setTimeout(runGreeting, START_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      if (startTimeoutId != null) window.clearTimeout(startTimeoutId);
+      if (betweenTimeoutId != null) window.clearTimeout(betweenTimeoutId);
+      clearGreetingInterval();
+      clearTaglineInterval();
+    };
+  }, [showWelcome]);
 
   const handleWelcomePill = (pillId) => {
     if (pillId === "search") {
@@ -3307,14 +3667,36 @@ export default function ChatCenter({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {showWelcome ? (
-          <div className="flex min-h-full flex-col items-center justify-center px-6 py-10">
-            <div className="max-w-lg text-center">
-              <h2 className="text-[1.65rem] font-semibold tracking-tight text-white md:text-3xl">
-                Hello, how can I help?
-              </h2>
-              <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                Ask me anything — I&apos;ll assign the right agents to your task.
-              </p>
+          <div className="flex min-h-full flex-col justify-center px-2 py-10 sm:px-4">
+            <div className="mx-auto w-full max-w-2xl">
+              <div className="flex w-full min-w-0 gap-3 flex-row">
+                <Avatar label="T" className="bg-white/[0.08] text-slate-200 ring-1 ring-white/[0.08]" />
+                <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-white/[0.06] bg-white/[0.03] px-3 py-3 text-sm leading-relaxed text-slate-100 shadow-sm sm:px-4">
+                  <p className="min-h-[2.75rem] text-lg font-semibold tracking-tight text-white sm:min-h-[3.25rem] sm:text-[1.65rem] md:min-h-[3.5rem] md:text-3xl md:leading-snug">
+                    <span>{welcomeGreetingTyped}</span>
+                    {welcomeGreetingTyped.length > 0 && welcomeGreetingTyped.length < WELCOME_GREETING.length ? (
+                      <span
+                        className="ml-0.5 inline-block h-[1em] w-[2px] animate-pulse align-[-0.12em] bg-white/75"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </p>
+                  <p className="mt-3 min-h-[1.25rem] text-left text-sm leading-relaxed text-slate-500" aria-live="polite">
+                    <span>{welcomeTaglineTyped}</span>
+                    {welcomeGreetingTyped.length >= WELCOME_GREETING.length && welcomeTaglineTyped.length > 0 ? (
+                      <span
+                        className={[
+                          "ml-0.5 inline-block h-[1em] w-[2px] align-[-0.12em] animate-pulse",
+                          welcomeTaglineTyped.length >= WELCOME_TAGLINE.length
+                            ? "bg-slate-600/70"
+                            : "bg-slate-500",
+                        ].join(" ")}
+                        aria-hidden
+                      />
+                    ) : null}
+                  </p>
+                </div>
+              </div>
               <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
                 {WELCOME_PILLS.map((p) => (
                   <button
@@ -3435,6 +3817,13 @@ export default function ChatCenter({
                         Preview in Canvas
                       </button>
                     </div>
+                  ) : null}
+                  {!isUser ? (
+                    <FeedbackBar
+                      messageId={m.id}
+                      text={m.text || m.content || ""}
+                      onFeedback={onMessageFeedback}
+                    />
                   ) : null}
                 </div>
               </div>

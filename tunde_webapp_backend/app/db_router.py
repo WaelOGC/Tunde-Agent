@@ -29,6 +29,9 @@ from tunde_webapp_backend.app.models.tool_result import ToolResult
 
 router = APIRouter(prefix="/db", tags=["database"])
 
+# Ephemeral feedback log (replace with DB model when needed).
+_FEEDBACK_LOG: list[dict[str, object]] = []
+
 
 def _conv_out(row: Conversation) -> dict:
     return {
@@ -175,6 +178,28 @@ def save_message(body: MessageCreateBody) -> dict:
         session.add(row)
         session.flush()
         return {"ok": True, "message": _msg_out(row)}
+
+
+class FeedbackCreateBody(BaseModel):
+    message_id: str = Field(..., max_length=256)
+    user_id: str = Field(..., max_length=128)
+    feedback_type: str = Field(..., max_length=32)
+
+
+@router.post("/feedback")
+def save_feedback(body: FeedbackCreateBody) -> dict:
+    ft = body.feedback_type.strip().lower()
+    if ft not in ("up", "down", "regenerate"):
+        raise HTTPException(status_code=400, detail="feedback_type must be up, down, or regenerate.")
+    _FEEDBACK_LOG.append(
+        {
+            "message_id": body.message_id,
+            "user_id": body.user_id,
+            "feedback_type": ft,
+            "received_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    return {"ok": True}
 
 
 class ToolResultCreateBody(BaseModel):

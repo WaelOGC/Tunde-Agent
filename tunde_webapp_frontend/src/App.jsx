@@ -529,6 +529,27 @@ export function App() {
   const newChatFnRef = useRef(() => {});
   const API_BASE = useMemo(() => backendHttpBase().replace(/\/$/, ""), []);
 
+  const handleMessageFeedback = useCallback(
+    async (messageId, type) => {
+      console.log("[App] feedback:", messageId, type);
+      if (type === "regenerate") return;
+      try {
+        await fetch(`${API_BASE}/db/feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message_id: messageId,
+            user_id: DEV_DB_USER,
+            feedback_type: type,
+          }),
+        });
+      } catch (err) {
+        console.error("Feedback error:", err);
+      }
+    },
+    [API_BASE]
+  );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -5318,6 +5339,7 @@ export function App() {
                     onOpenToolPicker={() => setShowToolPicker(true)}
                     selectedMode={selectedMode}
                     onModeChange={(mode) => setSelectedMode(mode)}
+                    onMessageFeedback={handleMessageFeedback}
                   />
                 </div>
                 {landingOpen && canvasView === "business" ? (

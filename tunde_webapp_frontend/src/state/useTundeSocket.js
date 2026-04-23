@@ -7,43 +7,59 @@ function buildWsUrl(httpBase) {
   return `${proto}//${u.host}/ws/tunde`;
 }
 
+/** Process-wide: one socket per URL; refcount so React remounts/HMR do not stack connections. */
+let globalTundeWs = null;
+let globalTundeUrl = "";
+let globalTundeRefcount = 0;
+let globalTundeReconnectTimer = null;
+let globalTundeRetry = 0;
+
 export function useTundeSocket(args) {
   const [connected, setConnected] = useState(false);
-  const wsRef = useRef(null);
-  const retryRef = useRef(0);
-  const closedByUserRef = useRef(false);
-  const timerRef = useRef(null);
   const onEventRef = useRef(args.onEvent);
+  const backendBaseRef = useRef(args.backendHttpBase);
   onEventRef.current = args.onEvent;
+  backendBaseRef.current = args.backendHttpBase;
 
   useEffect(() => {
-    closedByUserRef.current = false;
+    const url = buildWsUrl(backendBaseRef.current);
 
-    const connect = () => {
-      const url = buildWsUrl(args.backendHttpBase);
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
+    const clearReconnectTimer = () => {
+      if (globalTundeReconnectTimer != null) {
+        window.clearTimeout(globalTundeReconnectTimer);
+        globalTundeReconnectTimer = null;
+      }
+    };
 
+    const attachHandlers = (ws) => {
       ws.onopen = () => {
-        retryRef.current = 0;
+        if (globalTundeWs !== ws) return;
+        globalTundeRetry = 0;
         setConnected(true);
       };
 
       ws.onclose = () => {
+        if (globalTundeWs === ws) {
+          globalTundeWs = null;
+          globalTundeUrl = "";
+        }
         setConnected(false);
-        wsRef.current = null;
-        if (closedByUserRef.current) return;
-
-        retryRef.current += 1;
-        const delayMs = Math.min(10_000, 500 * Math.pow(1.6, retryRef.current));
-        timerRef.current = window.setTimeout(connect, delayMs);
+        if (globalTundeRefcount <= 0) return;
+        clearReconnectTimer();
+        globalTundeRetry += 1;
+        const delayMs = Math.min(10_000, 500 * Math.pow(1.6, globalTundeRetry));
+        globalTundeReconnectTimer = window.setTimeout(() => {
+          globalTundeReconnectTimer = null;
+          openIfNeeded();
+        }, delayMs);
       };
 
       ws.onerror = () => {
-        // let onclose handle reconnects
+        // onclose handles reconnect
       };
 
       ws.onmessage = (ev) => {
+        if (globalTundeWs !== ws) return;
         try {
           const data = JSON.parse(ev.data);
           if (
@@ -62,16 +78,61 @@ export function useTundeSocket(args) {
       };
     };
 
-    connect();
+    const openIfNeeded = () => {
+      if (globalTundeRefcount <= 0) return;
+
+      const existing = globalTundeWs;
+      if (existing && globalTundeUrl === url) {
+        const rs = existing.readyState;
+        if (rs === WebSocket.CONNECTING || rs === WebSocket.OPEN) {
+          if (rs === WebSocket.OPEN) setConnected(true);
+          return;
+        }
+      }
+
+      clearReconnectTimer();
+
+      if (existing) {
+        try {
+          existing.close();
+        } catch {
+          /* ignore */
+        }
+        if (globalTundeWs === existing) {
+          globalTundeWs = null;
+          globalTundeUrl = "";
+        }
+      }
+
+      const ws = new WebSocket(url);
+      globalTundeWs = ws;
+      globalTundeUrl = url;
+      attachHandlers(ws);
+    };
+
+    globalTundeRefcount += 1;
+    openIfNeeded();
 
     return () => {
-      closedByUserRef.current = true;
+      globalTundeRefcount -= 1;
       setConnected(false);
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      if (wsRef.current) wsRef.current.close();
+      clearReconnectTimer();
+
+      if (globalTundeRefcount <= 0) {
+        globalTundeRetry = 0;
+        const w = globalTundeWs;
+        globalTundeWs = null;
+        globalTundeUrl = "";
+        if (w) {
+          try {
+            w.close();
+          } catch {
+            /* ignore */
+          }
+        }
+      }
     };
   }, [args.backendHttpBase]);
 
   return { connected };
 }
-

@@ -20,6 +20,7 @@ import ToolPickerModal from "./components/ToolPickerModal";
 import TundeHub from "./components/TundeHub";
 import { getMockSession } from "./state/mockSession";
 import { useTundeSocket } from "./state/useTundeSocket";
+import AvatarCore from "./avatar/AvatarCore";
 
 function makeId() {
   return Math.random().toString(16).slice(2);
@@ -106,7 +107,7 @@ async function fetchConversationMessages(convId) {
     if (!r.ok) return [];
     const j = await r.json().catch(() => null);
     const rows = Array.isArray(j?.messages) ? j.messages : [];
-    return rows.map(mapDbApiMessageToSessionMessage);
+    return rows.map(mapDbApiMessageToSessionMessage).filter(Boolean);
   } catch {
     return [];
   }
@@ -135,6 +136,7 @@ function inferWorkspaceToolFromBlocks(blocks) {
 
 /** Map ``GET /db/conversations/.../messages`` row → in-memory session message. */
 function mapDbApiMessageToSessionMessage(row) {
+  if (!row || typeof row !== "object") return null;
   let blocks = [];
   if (row?.blocks_json && typeof row.blocks_json === "string" && row.blocks_json.trim()) {
     try {
@@ -144,17 +146,39 @@ function mapDbApiMessageToSessionMessage(row) {
       blocks = [];
     }
   }
-  const roleRaw = String(row?.role || "").toLowerCase();
+  const roleRaw = String(row?.role ?? "")
+    .trim()
+    .toLowerCase();
   const role = roleRaw === "user" ? "user" : roleRaw === "ceo" ? "ceo" : "assistant";
   const tool =
     workspaceToolFromDbToolType(row?.tool_type) || inferWorkspaceToolFromBlocks(blocks);
+  const mid =
+    row.message_id != null && String(row.message_id).trim() !== ""
+      ? String(row.message_id)
+      : row.messageId != null && String(row.messageId).trim() !== ""
+        ? String(row.messageId)
+        : row.id != null && String(row.id).trim() !== ""
+          ? String(row.id)
+          : makeMessageId();
+  const toolTypeRaw = row.tool_type != null ? String(row.tool_type) : null;
   return {
-    id: String(row.message_id),
+    id: mid,
+    message_id: mid,
     role,
-    content: typeof row.content === "string" ? row.content : "",
+    content:
+      typeof row.content === "string"
+        ? row.content
+        : typeof row.text === "string"
+          ? row.text
+          : "",
     timestamp: row.timestamp || new Date().toISOString(),
     blocks,
+    blocks_json: typeof row.blocks_json === "string" ? row.blocks_json : null,
     tool,
+    tool_type: toolTypeRaw,
+    ...(row.correlation_id != null && String(row.correlation_id).trim() !== ""
+      ? { correlationId: String(row.correlation_id) }
+      : {}),
   };
 }
 
@@ -527,6 +551,8 @@ export function App() {
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
   const newChatFnRef = useRef(() => {});
+  /** Sidebar delete / POST resume must not run until boot finishes (avoids races with Strict Mode / overlapping effects). */
+  const bootHydrationDoneRef = useRef(false);
   const API_BASE = useMemo(() => backendHttpBase().replace(/\/$/, ""), []);
 
   const handleMessageFeedback = useCallback(
@@ -552,6 +578,14 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    /** Must run synchronously — before any `await`. Another effect clears this key while `activeSessionId` is still `local_*`. */
+    let storedConvId = null;
+    try {
+      const raw = localStorage.getItem(TUNDE_LAST_ACTIVE_CONV_KEY);
+      if (raw && isUuidLike(String(raw).trim())) storedConvId = String(raw).trim();
+    } catch {
+      /* ignore */
+    }
     (async () => {
       try {
         const rows = await fetchConversationList();
@@ -588,6 +622,9 @@ export function App() {
           } catch {
             /* ignore */
           }
+        } else if (storedConvId && fromDb.some((x) => x.id === storedConvId)) {
+          nextActive = storedConvId;
+          syncConvUrlFromSession(storedConvId);
         }
         const nextSessions = [draft, ...fromDb];
         setSessions(nextSessions);
@@ -602,6 +639,8 @@ export function App() {
         }
       } catch (e) {
         console.warn("Failed to load conversation history:", e);
+      } finally {
+        if (!cancelled) bootHydrationDoneRef.current = true;
       }
     })();
     return () => {
@@ -610,20 +649,28 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!activeSessionId || String(activeSessionId).startsWith("local_")) {
-      try {
-        localStorage.removeItem(TUNDE_LAST_ACTIVE_CONV_KEY);
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
     try {
-      localStorage.setItem(TUNDE_LAST_ACTIVE_CONV_KEY, activeSessionId);
+      const sid = activeSessionId;
+      if (!sid) {
+        localStorage.removeItem(TUNDE_LAST_ACTIVE_CONV_KEY);
+        return;
+      }
+      const sess = sessions.find((s) => s.id === sid);
+      let persistId = null;
+      if (!String(sid).startsWith("local_") && isUuidLike(String(sid))) {
+        persistId = String(sid);
+      } else if (sess?.dbConvId && isUuidLike(String(sess.dbConvId))) {
+        persistId = String(sess.dbConvId);
+      }
+      if (!persistId) {
+        localStorage.removeItem(TUNDE_LAST_ACTIVE_CONV_KEY);
+        return;
+      }
+      localStorage.setItem(TUNDE_LAST_ACTIVE_CONV_KEY, persistId);
     } catch {
       /* ignore */
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, sessions]);
 
   const [pendingInfographic, setPendingInfographic] = useState(false);
   // Guard against duplicate final events (WebSocket reconnects / multiple connections).
@@ -816,7 +863,7 @@ export function App() {
 
   const hydrateSessionMessages = useCallback(async (sessionId) => {
     const s = sessionsRef.current.find((x) => x.id === sessionId);
-    if (!s || s.isLocalDraft || s.messagesHydrated) return;
+    if (!s || s.isLocalDraft) return;
     const convId = s.dbConvId || (isUuidLike(s.id) ? s.id : null);
     if (!convId) return;
     let msgs = [];
@@ -864,13 +911,21 @@ export function App() {
           })
         : [];
       const tool = m.tool || inferWorkspaceToolFromBlocks(blocksArr);
+      const roleNorm = String(m?.role ?? "")
+        .trim()
+        .toLowerCase();
+      const roleOut = roleNorm === "user" ? "user" : "assistant";
       return {
         id: m.id,
-        role: m.role === "user" ? "user" : "assistant",
-        text: m.content || m.text || "",
+        message_id: m.message_id != null ? String(m.message_id) : String(m.id ?? ""),
+        role: roleOut,
+        text: String(m.content ?? m.text ?? ""),
+        timestamp: m.timestamp || null,
         canvasFollowUp: Boolean(m.canvasFollowUp),
         tool,
+        tool_type: m.tool_type != null ? String(m.tool_type) : null,
         blocks: blocksArr,
+        style: m.style,
       };
     });
   }, [activeSession?.messages]);
@@ -902,6 +957,16 @@ export function App() {
       );
       return String(sessionId);
     }
+    /** When UI is still on a local draft but ``localStorage`` holds the last DB conv, POST with ``conv_id`` so the backend returns the existing row (no duplicate conv). */
+    let resumeConvId = null;
+    if (cur?.isLocalDraft) {
+      try {
+        const raw = localStorage.getItem(TUNDE_LAST_ACTIVE_CONV_KEY);
+        if (raw && isUuidLike(String(raw).trim())) resumeConvId = String(raw).trim();
+      } catch {
+        /* ignore */
+      }
+    }
     const base = backendHttpBase().replace(/\/$/, "");
     try {
       const r = await fetch(`${base}/db/conversations`, {
@@ -911,6 +976,7 @@ export function App() {
           user_id: DEV_DB_USER,
           title: opts.title ?? null,
           tool_used: opts.tool_used ?? null,
+          ...(resumeConvId ? { conv_id: resumeConvId } : {}),
         }),
       });
       if (!r.ok) {
@@ -1158,6 +1224,7 @@ export function App() {
 
   const handleDeleteChat = useCallback(
     async (sessionId) => {
+      if (!bootHydrationDoneRef.current) return;
       if (!isUuidLike(String(sessionId))) {
         const ss = sessionsRef.current;
         const next = ss.filter((s) => s.id !== sessionId);
@@ -1330,6 +1397,8 @@ export function App() {
     const targetSession = runSessionRef.current || activeSessionIdRef.current;
     const runId = currentRunRef.current?.taskId;
 
+    // Streaming disabled (assistant_delta / assistant_done ignored for stable chat).
+
     if (env?.event === "tool_activity" && isToolActivityPayload(payload)) {
       if (runId != null && runId !== "" && String(payload.task_id) !== String(runId)) return;
       const line = payload.message.trim();
@@ -1376,9 +1445,10 @@ export function App() {
         const rt = runToolsRef.current;
         const canvasFollowUp = Boolean(rt.search || rt.analysis || rt.file_work);
         runToolsRef.current = { search: false, analysis: false, file_work: false };
-        const assistantMsgId = makeMessageId();
         const blocks = Array.isArray(payload.blocks) ? payload.blocks : [];
-        patchSessionMessages(targetSession, (m) => [
+        const sidComplete = targetSession;
+        const assistantMsgId = makeMessageId();
+        patchSessionMessages(sidComplete, (m) => [
           ...m,
           {
             id: assistantMsgId,
@@ -1386,7 +1456,6 @@ export function App() {
             style: "ceo_final",
             content: msg || "Task complete.",
             timestamp: ts,
-            correlationId: payload.correlation_id,
             blocks,
             canvasFollowUp,
           },

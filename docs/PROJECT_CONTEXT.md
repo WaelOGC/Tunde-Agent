@@ -2,7 +2,11 @@
 
 **Purpose:** Single source of truth for AI assistants and engineers joining new sessions.  
 **Maintenance:** Update this file whenever architecture, endpoints, schema, major features, or priorities change.  
-**Last reviewed:** 2026-04-21 — **Design Agent** Phase 1 (Brand Identity) ✅; Phase 2 (Web Page Designer) ✅; Phase 3 (UI/UX Prototype) ⚠️ partial (Preview deferred); dashboard redesign (Tool Picker Modal, sidebar chat + Hub only); provider names hidden in UI. Earlier (2026-04-20): Design Agent docs; bug fixes — (1) tool replies only patch the active session (`patchSessionMessages` + `activeSessionIdRef` in `App.jsx`); (2) Business Agent UI copy uses **Business Agent** across ChatCenter, App, Business canvases/modals, and export helpers (`TundeHub.jsx` unchanged — product name). Business slice, Document Writer markdown, removed `main.py` OAuth debug print — see §7.
+**Last reviewed:** 2026-04-22 — **Tunde Avatar (V1)** ⚠️ in progress: React module under `tunde_webapp_frontend/src/avatar/` (`AvatarMini`, `AvatarCore`, `AvatarExpanded`, `AvatarStateManager`; placeholder files for config/renderer/voice sync). `ChatCenter.jsx` tracks LISTENING / THINKING / SPEAKING from submit + `processing`; `AvatarMini` in the message list uses a stable IDLE state while frontend chat streaming stays off (`App.jsx`). **Docs:** `docs/avatar/*` specs + `avatar_visual_reference_v1.png`. **Shared LLM:** `src/tunde_agent/services/llm_service.py` — Gemini REST + DeepSeek + streaming iterators for orchestrator use. **Orchestrator:** `tunde_webapp_backend/app/orchestrator.py` — WebSocket `assistant_delta` / `assistant_done` when LLM streaming works; richer dashboard reply rules (no boilerplate intro, structured Markdown, light emojis, no Telegram/off-app CTAs). **`useTundeSocket.js`** — process-wide refcounted singleton WebSocket per URL (avoids stacked connections on refresh/remount).
+
+**Earlier (2026-04-21):** **Design Agent** Phase 1 (Brand Identity) ✅; Phase 2 (Web Page Designer) ✅; Phase 3 (UI/UX Prototype) ⚠️ partial (Preview deferred); dashboard redesign (Tool Picker Modal, sidebar chat + Hub only); provider names hidden in UI.
+
+**Earlier (2026-04-20):** Design Agent docs; bug fixes — (1) tool replies only patch the active session (`patchSessionMessages` + `activeSessionIdRef` in `App.jsx`); (2) Business Agent UI copy uses **Business Agent** across ChatCenter, App, Business canvases/modals, and export helpers (`TundeHub.jsx` unchanged — product name). Business slice, Document Writer markdown, removed `main.py` OAuth debug print — see §7.
 
 ---
 
@@ -52,7 +56,7 @@ Subscription tiers (planned): **Free**, **Pro**, **Business**, **Enterprise** �
 | --- | --- |
 | `tunde_webapp_frontend/` | React + Vite dashboard: chat, workspace, Canvas, charts, 3D viewers, sidebar history. |
 | `tunde_webapp_backend/` | FastAPI app: `/tools/*`, `/db/*`, `/auth/*`, `/tasks/*`, WebSockets, file upload, published pages. SQLite DB file lives here in dev. |
-| `docs/` | Product and technical documentation (`MASTER_INDEX.md`, numbered sections, `08_tools/*`, database design, roadmap). **This file:** `docs/PROJECT_CONTEXT.md`. |
+| `docs/` | Product and technical documentation (`MASTER_INDEX.md`, numbered sections, `08_tools/*`, database design, roadmap). **`docs/avatar/`** — Tunde Avatar V1 specs + visual reference. **This file:** `docs/PROJECT_CONTEXT.md`. |
 | `docker/` | `Dockerfile` for containerized backend / services. |
 | `docker-compose.yml` | PostgreSQL + app service wiring for containerized deployments. |
 | `telegram_agent_core/` | Telegram-side agent core (parallel to web app in broader monorepo). |
@@ -83,7 +87,9 @@ Subscription tiers (planned): **Free**, **Pro**, **Business**, **Enterprise** �
 
 - `tunde_webapp_frontend/src/App.jsx` — Main shell: routing to tools, DB user id (`DEV_DB_USER`), Canvas, conversation persistence.
 - `tunde_webapp_frontend/src/components/` — UI pieces (e.g. `ChatCenter.jsx`, `WorkspaceSidebar.jsx`, `DataChart.jsx`).
+- `tunde_webapp_frontend/src/avatar/` — Tunde Avatar V1 UI scaffold (`AvatarMini.jsx`, `AvatarCore.jsx`, etc.).
 - `tunde_webapp_frontend/package.json` — Scripts and dependencies.
+- `src/tunde_agent/services/llm_service.py` — Shared LLM service (Gemini + DeepSeek, streaming) consumed by the web backend orchestrator.
 
 **Docs**
 
@@ -118,6 +124,7 @@ Subscription tiers (planned): **Free**, **Pro**, **Business**, **Enterprise** �
 - **Database:** SQLite in dev; all core tables created via `init_db()`.
 - **Conversation history:** Persistent; survives refresh.
 - **Sidebar:** Conversation groups (**Today**, **Yesterday**, **Last 7 days**).
+- **Tunde Avatar (V1 UI):** Mini animated orb component in chat; state machine and expanded overlay stub; full voice pipeline not wired yet.
 
 ---
 
@@ -180,6 +187,13 @@ Tables are defined in `tunde_webapp_backend/app/models/` and created with `Base.
 | Document Writer — raw `#` heading in body | First content line repeated **`block.title`** as ATX heading | **`stripLeadingDuplicateDocTitle`** + **`bodyForDoc`** for render/copy — **`ChatCenter.jsx`**. |
 | Document Writer — tables | Model often used bullets for tabular data; pipe tables needed parsing + styling | **`document_writer.py`** — prompt instructs GFM pipe tables; **`DocumentWriterMarkdownTable`**, **`segmentDocumentWriterMarkdown`** — **`ChatCenter.jsx`**. |
 
+### ✅ Fixed (2026-04-22)
+
+| Issue | Root cause | Fix |
+| --- | --- | --- |
+| **Bug 3 — Refresh duplicate chat + user messages disappear** | Churn in logs (**`DELETE /db/conversations`**, then **`POST /db/conversations`**) had no separate “cleanup” function in the tree—**`App.jsx`** is the only caller of conversation **DELETE** (`handleDeleteChat` → sidebar). Races during **bootstrap** (e.g. **React Strict Mode** / effect order) could let **delete** or **new**-chat paths run before the list and active session were stable. **POST** also created a **new** row whenever the UI stayed on a **`local_*`** draft but **`tunde_last_active_conv_id`** still pointed at an existing conv. | **`App.jsx`**: boot sync read + **`dbConvId`** in **`localStorage`**, **`bootHydrationDoneRef`** (delete only after boot **`finally`**), **`POST /db/conversations`** with optional **`conv_id`** for local drafts (backend get-or-create, no duplicate row on resume), message mapping; **`ChatCenter.jsx`**: **`role.trim()`** + user bubble text fallback. |
+| **Multiple WebSocket connections on load** | Each hook/effect run could create a new socket while another was still **CONNECTING** / timers stacked reconnects across remounts. | **`useTundeSocket.js`**: module-level **single socket per URL** with **refcount**; reconnect only while refcount \> 0; one shared handler pipeline. |
+
 ### Code / operations (tracked in docs)
 
 | Severity | Issue | Location / notes |
@@ -196,15 +210,16 @@ Shipped fixes are listed in **✅ Fixed (2026-04-20)** above. Optional spot-chec
 
 ## 8. Next steps (priority order)
 
-1. Architecture Visualizer 3D View — resolve Three.js rendering in React iframe (deferred to pre-release).
-2. Add `glb_url` to `architecture_projects` DB table.
-3. Resolve UI/UX Prototype Preview (iframe CSP issue with Vite dev server — deferred to pre-release).
-4. Update `PROJECT_MAP.md` with new files: `design_agent.py`, `design_router.py`, `brand_identity.py`, `web_page_designer.py`, `web_page_router.py`, `web_page_design.py`, `uiux_prototype.py` (tool), `uiux_router.py`, `uiux_prototype.py` (model), `DesignAgentCanvas.jsx`, `BrandIdentityWizard.jsx`, `WebPageDesignerCanvas.jsx`, `WebPageDesignerWizard.jsx`, `UIUXCanvas.jsx`, `UIUXWizard.jsx`, `ToolPickerModal.jsx`, `designAgentWorkflow.js`, `webPageDesignerWorkflow.js`, `uiuxWorkflow.js`.
-5. Build **Creative Writer**.
-6. Data Analyst **Phase 3** (Google Drive, Gmail).
-7. **Voice Engine**.
-8. **Official marketing website.**
-9. **Project Folders** feature (DB + UI).
+1. Tunde Avatar — wire `AvatarCore` into main shell if desired; implement `AvatarVoiceSync` / STT-TTS; optionally tie `AvatarMini` in the transcript to live `avatarState` when chat streaming is re-enabled client-side.
+2. Architecture Visualizer 3D View — resolve Three.js rendering in React iframe (deferred to pre-release).
+3. Add `glb_url` to `architecture_projects` DB table.
+4. Resolve UI/UX Prototype Preview (iframe CSP issue with Vite dev server — deferred to pre-release).
+5. Update `PROJECT_MAP.md` with new files: `design_agent.py`, `design_router.py`, `brand_identity.py`, `web_page_designer.py`, `web_page_router.py`, `web_page_design.py`, `uiux_prototype.py` (tool), `uiux_router.py`, `uiux_prototype.py` (model), `DesignAgentCanvas.jsx`, `BrandIdentityWizard.jsx`, `WebPageDesignerCanvas.jsx`, `WebPageDesignerWizard.jsx`, `UIUXCanvas.jsx`, `UIUXWizard.jsx`, `ToolPickerModal.jsx`, `designAgentWorkflow.js`, `webPageDesignerWorkflow.js`, `uiuxWorkflow.js`.
+6. Build **Creative Writer**.
+7. Data Analyst **Phase 3** (Google Drive, Gmail).
+8. **Voice Engine** (extends Avatar work).
+9. **Official marketing website.**
+10. **Project Folders** feature (DB + UI).
 
 ---
 
@@ -219,6 +234,7 @@ Shipped fixes are listed in **✅ Fixed (2026-04-20)** above. Optional spot-chec
 - **Provider labels (2026-04-21):** AI provider names (`gemini`, `deepseek`, `fallback`, etc.) must **never** be shown to users in any UI element. Provider info is stored in the DB but hidden from all frontend displays.
 - **Tool Picker (2026-04-21):** Tools are accessed via a **modal** (+ button in the composer) instead of sidebar tool buttons. The sidebar contains **chat history + Tunde Hub** only.
 - **Design Agent family (2026-04-21):** Sub-tools (**Brand Identity**, **Web Page Designer**, **UI/UX Prototype**) appear as **separate cards** in the Tool Picker under the **Design** category tab.
+- **Assistant streaming (2026-04-22):** The web backend orchestrator may stream model output over **`/ws/tunde`** as **`assistant_delta`** then **`assistant_done`** when `LLMService.chat_stream` succeeds; the UI may still assemble the final assistant message via non-streaming paths for stability—events remain available for future live typing and avatar sync.
 
 ---
 

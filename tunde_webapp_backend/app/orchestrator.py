@@ -10,6 +10,7 @@ import asyncio
 import copy
 import json
 import logging
+import threading
 from typing import Any
 
 from tunde_webapp_backend.app.task_models import Task, TaskStatus
@@ -115,6 +116,62 @@ class TaskOrchestrator:
             },
         )
 
+    async def _broadcast_chat_stream(self, task: Task, service: Any, augmented: str) -> str:
+        """
+        Consume ``LLMService.chat_stream`` in a worker thread and forward each chunk over WebSocket
+        as ``assistant_delta``, then ``assistant_done``. Keeps the event loop responsive.
+        """
+        loop = asyncio.get_running_loop()
+        q: asyncio.Queue[str | None] = asyncio.Queue(maxsize=1024)
+        err_holder: list[BaseException] = []
+
+        def producer() -> None:
+            try:
+                for delta in service.chat_stream(augmented):
+                    if not delta:
+                        continue
+                    fut = asyncio.run_coroutine_threadsafe(q.put(str(delta)), loop)
+                    fut.result(timeout=300)
+            except BaseException as exc:
+                err_holder.append(exc)
+            finally:
+                try:
+                    asyncio.run_coroutine_threadsafe(q.put(None), loop).result(timeout=60)
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=producer, name="tunde-llm-stream", daemon=True)
+        t.start()
+        parts: list[str] = []
+        try:
+            while True:
+                chunk = await q.get()
+                if chunk is None:
+                    break
+                parts.append(chunk)
+                await ws_manager.broadcast(
+                    event="assistant_delta",
+                    payload={
+                        "task_id": str(task.task_id),
+                        "correlation_id": str(task.correlation_id),
+                        "delta": chunk,
+                    },
+                )
+        finally:
+            t.join(timeout=300)
+        if err_holder:
+            raise err_holder[0]
+        text = "".join(parts).strip()
+        await ws_manager.broadcast(
+            event="assistant_done",
+            payload={
+                "task_id": str(task.task_id),
+                "correlation_id": str(task.correlation_id),
+                "message": text,
+            },
+        )
+        return text
+
     async def _generate_candidate_text(
         self,
         *,
@@ -122,6 +179,7 @@ class TaskOrchestrator:
         tool_context: str | None = None,
         dashboard: bool = True,
         will_auto_image: bool = False,
+        task: Task | None = None,
     ) -> str:
         """
         Generate a candidate assistant reply.
@@ -156,9 +214,17 @@ class TaskOrchestrator:
 
             settings = get_settings()
             service = LLMService(settings, PromptManager())
-            # LLMService.chat is sync; run off the event loop.
-            reply = await asyncio.to_thread(service.chat, augmented)
-            reply_text = str(reply or "").strip()
+            if task is not None:
+                try:
+                    reply_text = await self._broadcast_chat_stream(task, service, augmented)
+                except Exception as stream_exc:
+                    logger.warning(
+                        "LLM stream failed, falling back to non-streaming chat: %s",
+                        str(stream_exc)[:200],
+                    )
+                    reply_text = str(await asyncio.to_thread(service.chat, augmented) or "").strip()
+            else:
+                reply_text = str(await asyncio.to_thread(service.chat, augmented) or "").strip()
             if reply_text:
                 return reply_text
         except Exception as exc:
@@ -249,6 +315,7 @@ class TaskOrchestrator:
                 tool_context=outcome.context_text or None,
                 dashboard=True,
                 will_auto_image=has_canvas_image,
+                task=task,
             )
             task.result = {"ok": True, "text": candidate_text, "blocks": blocks}
 
@@ -320,6 +387,7 @@ class TaskOrchestrator:
                         and str(b.get("src") or b.get("url") or b.get("data_url") or "").strip()
                         for b in prev_blocks
                     ),
+                    task=task,
                 )
                 task.result = {
                     "ok": True,

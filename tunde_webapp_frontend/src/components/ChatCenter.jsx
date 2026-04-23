@@ -13,6 +13,7 @@ import AnatomyVisual from "./AnatomyVisual";
 import CodeBlock from "./CodeBlock";
 import ResearchReportDocument from "./ResearchReportDocument";
 import DataChart, { chartDataScatterConvertible } from "./DataChart";
+import AvatarMini from "../avatar/AvatarMini";
 import { AssistantFormattedText } from "../utils/AssistantFormattedText";
 import { stripExecutiveSummary } from "../utils/executiveText";
 import { prepareAssistantMarkdown, segmentMarkdownPipeTables } from "../utils/markdownTables";
@@ -21,6 +22,34 @@ import { prepareAssistantMarkdown, segmentMarkdownPipeTables } from "../utils/ma
 const WELCOME_GREETING = "Hello, how can I help?";
 const WELCOME_TAGLINE =
   "Ask me anything — I'll assign the right agents to your task.";
+
+/**
+ * User bubble text: prefer ``text``; if empty (some DB rows), derive from simple block fields
+ * so hydrated messages still render without a live-only ``pending`` flag.
+ */
+function userMessageDisplayText(text, blocks) {
+  const t = String(text ?? "").trim();
+  if (t) return t;
+  if (!Array.isArray(blocks)) return "";
+  for (const b of blocks) {
+    if (!b || typeof b !== "object") continue;
+    const k = String(b.type ?? "").toLowerCase();
+    if (k === "business_brief" || k === "design_brief") return "";
+    const c =
+      typeof b.text === "string"
+        ? b.text
+        : typeof b.content === "string"
+          ? b.content
+          : typeof b.raw === "string"
+            ? b.raw
+            : typeof b.prompt === "string"
+              ? b.prompt
+              : "";
+    const u = String(c).trim();
+    if (u) return u;
+  }
+  return "";
+}
 
 /** Split on markdown ATX headings after a newline — `#` through `######` so #### subsections become their own chunk (fixes missing section tabs vs. API `sections`). */
 const DOCUMENT_SECTION_SPLIT = /\r?\n(?=#{1,6}\s+)/;
@@ -3161,6 +3190,38 @@ export default function ChatCenter({
   const [researchThinkingStep, setResearchThinkingStep] = useState(0);
   const [welcomeGreetingTyped, setWelcomeGreetingTyped] = useState("");
   const [welcomeTaglineTyped, setWelcomeTaglineTyped] = useState("");
+  const [avatarState, setAvatarState] = useState("IDLE");
+  const prevProcessingForAvatarRef = useRef(processing);
+  const avatarSyncDidInitRef = useRef(false);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  useEffect(() => {
+    if (!avatarSyncDidInitRef.current) {
+      avatarSyncDidInitRef.current = true;
+      prevProcessingForAvatarRef.current = processing;
+      return;
+    }
+    const wasProcessing = prevProcessingForAvatarRef.current;
+    prevProcessingForAvatarRef.current = processing;
+
+    if (processing && !wasProcessing) {
+      setAvatarState("THINKING");
+    }
+    if (!processing && wasProcessing) {
+      const msgs = messagesRef.current;
+      const last = msgs[msgs.length - 1];
+      const isAssistant =
+        last &&
+        (last.role === "assistant" || String(last.sender ?? "").toLowerCase() === "tunde");
+      if (isAssistant) {
+        setAvatarState("SPEAKING");
+        const id = window.setTimeout(() => setAvatarState("IDLE"), 650);
+        return () => window.clearTimeout(id);
+      }
+      setAvatarState("IDLE");
+    }
+  }, [processing]);
 
   useEffect(() => {
     if (
@@ -3461,86 +3522,90 @@ export default function ChatCenter({
     if (attachedFile && !enabledTools.file_analyst) {
       onFileClear?.();
     }
+    const beginUserMessageRequest = (send) => {
+      setAvatarState("LISTENING");
+      send();
+    };
     if (enabledTools.file_analyst && attachedFile) {
-      onSend?.(text, { attachedFile });
+      beginUserMessageRequest(() => onSend?.(text, { attachedFile }));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (!text) return;
     if (enabledTools.math_solver && typeof onMathSolve === "function") {
-      onMathSolve(text);
+      beginUserMessageRequest(() => onMathSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.science_agent && typeof onScienceSolve === "function") {
-      onScienceSolve(text);
+      beginUserMessageRequest(() => onScienceSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.chemistry_agent && typeof onChemistrySolve === "function") {
-      onChemistrySolve(text);
+      beginUserMessageRequest(() => onChemistrySolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.space_agent && typeof onSpaceSolve === "function") {
-      onSpaceSolve(text);
+      beginUserMessageRequest(() => onSpaceSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.health_agent && typeof onHealthSolve === "function") {
-      onHealthSolve(text);
+      beginUserMessageRequest(() => onHealthSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.code_assistant && typeof onCodeSolve === "function") {
-      onCodeSolve(text);
+      beginUserMessageRequest(() => onCodeSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.translation_agent && typeof onTranslationSolve === "function") {
-      onTranslationSolve(text);
+      beginUserMessageRequest(() => onTranslationSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.document_writer && typeof onDocumentWriterSolve === "function") {
-      onDocumentWriterSolve(text);
+      beginUserMessageRequest(() => onDocumentWriterSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.data_analyst && typeof onDataAnalystSolve === "function") {
-      onDataAnalystSolve(text);
+      beginUserMessageRequest(() => onDataAnalystSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.study_assistant && typeof onStudySolve === "function") {
-      onStudySolve(text);
+      beginUserMessageRequest(() => onStudySolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.business_agent && typeof onBusinessSolve === "function") {
-      onBusinessSolve(text);
+      beginUserMessageRequest(() => onBusinessSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
     if (enabledTools.research_agent && typeof onResearchSolve === "function") {
-      onResearchSolve(text);
+      beginUserMessageRequest(() => onResearchSolve(text));
       setInput("");
       setToolsOpen(false);
       return;
     }
-    onSend?.(text, {});
+    beginUserMessageRequest(() => onSend?.(text, {}));
     setInput("");
     setToolsOpen(false);
   };
@@ -3716,116 +3781,142 @@ export default function ChatCenter({
           <div className="px-2 py-3 sm:px-4">
             <div className="mx-auto flex w-full max-w-none flex-col gap-5">
           {messages.map((m) => {
-            const isUser = m.role === "user";
+            const roleTrim = String(m?.role ?? "").trim().toLowerCase();
+            const isUser = roleTrim === "user";
+            const userBubbleText = userMessageDisplayText(m.text, m.blocks);
+            const isAssistant =
+              roleTrim === "assistant" || String(m.sender ?? "").toLowerCase() === "tunde";
+            /* Streaming off: keep mini avatar idle for stable UI. */
+            const avatarMiniState = "IDLE";
+
+            const messageBubble = (
+              <div
+                className={[
+                  "min-w-0 rounded-2xl py-3 text-sm leading-relaxed shadow-sm",
+                  isUser
+                    ? "max-w-[min(85%,42rem)] shrink-0 rounded-tr-sm bg-gradient-to-br from-violet-600 to-purple-800 px-4 text-white shadow-sm shadow-black/20"
+                    : "w-full max-w-none flex-1 rounded-tl-sm border border-white/[0.06] bg-white/[0.03] px-3 text-slate-100 sm:px-4",
+                ].join(" ")}
+              >
+                {isUser ? (
+                  Array.isArray(m.blocks) &&
+                  m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "business_brief") ? (
+                    <>
+                      <p className="text-[12px] font-semibold text-white/90">Request</p>
+                      <BusinessBriefCard
+                        fields={
+                          (m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "business_brief") || {})
+                            .fields
+                        }
+                        raw={
+                          (m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "business_brief") || {})
+                            .raw || m.text
+                        }
+                      />
+                    </>
+                  ) : Array.isArray(m.blocks) &&
+                    m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "design_brief") ? (
+                    <>
+                      <p className="text-[12px] font-semibold text-white/90">Request</p>
+                      <DesignBriefCard
+                        block={m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "design_brief") || {}}
+                      />
+                    </>
+                  ) : (
+                    <p className="whitespace-pre-wrap">
+                      {userBubbleText || String(m.text ?? "").trim() || "\u00A0"}
+                    </p>
+                  )
+                ) : (m.text || "").trim() &&
+                  !(
+                    m.tool === "math_solver" &&
+                    Array.isArray(m.blocks) &&
+                    m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "math_solution")
+                  ) ? (
+                  <AssistantRichText text={m.text} />
+                ) : null}
+                {!isUser ? (
+                  <MessageBlocks
+                    blocks={m.blocks}
+                    messageId={m.id}
+                    messageTool={m.tool}
+                    mathResults={mathResults}
+                    messageTimestamp={m.timestamp}
+                    canvasOpen={canvasOpen}
+                    canvasView={canvasView}
+                    canvasLinkedMessageId={canvasLinkedMessageId}
+                    onCanvasChipFocus={onCanvasChipFocus}
+                    onRetryLastPrompt={onRetryLastPrompt}
+                    onScienceReadingTopic={handleScienceReadingTopic}
+                    connected={connected}
+                    onDataAnalystExportCanvas={onDataAnalystExportCanvas}
+                    onDocumentWriterExportCanvas={onDocumentWriterExportCanvas}
+                    onCanvasCardOpen={onCanvasCardOpen}
+                    onDataAnalystFollowUp={onDataAnalystFollowUp}
+                    onBusinessAction={onBusinessAction}
+                    onOpenDesignCanvas={onOpenDesignCanvas}
+                    onOpenWebPageCanvas={onOpenWebPageCanvas}
+                    onOpenUIUXCanvas={onOpenUIUXCanvas}
+                    onOpenArchitectureCanvas={onOpenArchitectureCanvas}
+                  />
+                ) : null}
+                {!isUser &&
+                m.canvasFollowUp &&
+                m.tool !== "math_solver" &&
+                messageHasReportContext(m) &&
+                typeof onCanvasOpen === "function" ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800/60 pt-3">
+                    <button
+                      type="button"
+                      onClick={onCanvasOpen}
+                      disabled={processing || !connected || canvasBusy}
+                      className={PREVIEW_CANVAS_CHIP}
+                      title="Open the Tunde Canvas and build a shareable report from this answer"
+                    >
+                      <LayoutPreviewIcon className="h-4 w-4 text-violet-400 transition-transform duration-200 group-hover:scale-110" />
+                      Preview in Canvas
+                    </button>
+                  </div>
+                ) : null}
+                {!isUser ? (
+                  <FeedbackBar
+                    messageId={m.id}
+                    text={m.text || m.content || ""}
+                    onFeedback={onMessageFeedback}
+                  />
+                ) : null}
+              </div>
+            );
+
             return (
               <div
                 key={m.id}
-                className={["flex w-full min-w-0 gap-3", isUser ? "flex-row-reverse" : "flex-row"].join(
-                  " "
-                )}
+                className={["flex w-full min-w-0 gap-3", isUser ? "flex-row-reverse" : "flex-row"].join(" ")}
               >
-                <Avatar
-                  label={isUser ? "U" : "T"}
-                  className={
-                    isUser
-                      ? "bg-gradient-to-br from-violet-500 to-purple-700 text-white shadow-sm shadow-violet-950/40"
-                      : "bg-white/[0.08] text-slate-200 ring-1 ring-white/[0.08]"
-                  }
-                />
-                <div
-                  className={[
-                    "min-w-0 rounded-2xl py-3 text-sm leading-relaxed shadow-sm",
-                    isUser
-                      ? "max-w-[min(85%,42rem)] shrink-0 rounded-tr-sm bg-gradient-to-br from-violet-600 to-purple-800 px-4 text-white shadow-sm shadow-black/20"
-                      : "w-full max-w-none flex-1 rounded-tl-sm border border-white/[0.06] bg-white/[0.03] px-3 text-slate-100 sm:px-4",
-                  ].join(" ")}
-                >
-                  {isUser ? (
-                    Array.isArray(m.blocks) &&
-                    m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "business_brief") ? (
-                      <>
-                        <p className="text-[12px] font-semibold text-white/90">Request</p>
-                        <BusinessBriefCard
-                          fields={
-                            (m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "business_brief") || {})
-                              .fields
-                          }
-                          raw={
-                            (m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "business_brief") || {})
-                              .raw || m.text
-                          }
-                        />
-                      </>
-                    ) : Array.isArray(m.blocks) &&
-                      m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "design_brief") ? (
-                      <>
-                        <p className="text-[12px] font-semibold text-white/90">Request</p>
-                        <DesignBriefCard
-                          block={m.blocks.find((bb) => String(bb?.type || "").toLowerCase() === "design_brief") || {}}
-                        />
-                      </>
-                    ) : (m.text || "").trim() ? (
-                      <p className="whitespace-pre-wrap">{m.text}</p>
-                    ) : null
-                  ) : (m.text || "").trim() &&
-                    !(
-                      m.tool === "math_solver" &&
-                      Array.isArray(m.blocks) &&
-                      m.blocks.some((bb) => String(bb?.type || "").toLowerCase() === "math_solution")
-                    ) ? (
-                    <AssistantRichText text={m.text} />
-                  ) : null}
-                  {!isUser ? (
-                    <MessageBlocks
-                      blocks={m.blocks}
-                      messageId={m.id}
-                      messageTool={m.tool}
-                      mathResults={mathResults}
-                      messageTimestamp={m.timestamp}
-                      canvasOpen={canvasOpen}
-                      canvasView={canvasView}
-                      canvasLinkedMessageId={canvasLinkedMessageId}
-                      onCanvasChipFocus={onCanvasChipFocus}
-                      onRetryLastPrompt={onRetryLastPrompt}
-                      onScienceReadingTopic={handleScienceReadingTopic}
-                      connected={connected}
-                      onDataAnalystExportCanvas={onDataAnalystExportCanvas}
-                      onDocumentWriterExportCanvas={onDocumentWriterExportCanvas}
-                      onCanvasCardOpen={onCanvasCardOpen}
-                      onDataAnalystFollowUp={onDataAnalystFollowUp}
-                      onBusinessAction={onBusinessAction}
-                      onOpenDesignCanvas={onOpenDesignCanvas}
-                      onOpenWebPageCanvas={onOpenWebPageCanvas}
-                      onOpenUIUXCanvas={onOpenUIUXCanvas}
-                      onOpenArchitectureCanvas={onOpenArchitectureCanvas}
+                {isUser ? (
+                  <>
+                    <Avatar
+                      label="U"
+                      className="bg-gradient-to-br from-violet-500 to-purple-700 text-white shadow-sm shadow-violet-950/40"
                     />
-                  ) : null}
-                  {!isUser &&
-                  m.canvasFollowUp &&
-                  m.tool !== "math_solver" &&
-                  messageHasReportContext(m) &&
-                  typeof onCanvasOpen === "function" ? (
-                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800/60 pt-3">
-                      <button
-                        type="button"
-                        onClick={onCanvasOpen}
-                        disabled={processing || !connected || canvasBusy}
-                        className={PREVIEW_CANVAS_CHIP}
-                        title="Open the Tunde Canvas and build a shareable report from this answer"
-                      >
-                        <LayoutPreviewIcon className="h-4 w-4 text-violet-400 transition-transform duration-200 group-hover:scale-110" />
-                        Preview in Canvas
-                      </button>
+                    {messageBubble}
+                  </>
+                ) : isAssistant ? (
+                  <div className="flex min-w-0 w-full flex-1 items-start gap-3">
+                    <div className="shrink-0">
+                      <AvatarMini state={avatarMiniState} />
                     </div>
-                  ) : null}
-                  {!isUser ? (
-                    <FeedbackBar
-                      messageId={m.id}
-                      text={m.text || m.content || ""}
-                      onFeedback={onMessageFeedback}
+                    {messageBubble}
+                  </div>
+                ) : (
+                  <>
+                    <Avatar
+                      label="T"
+                      className="bg-white/[0.08] text-slate-200 ring-1 ring-white/[0.08]"
                     />
-                  ) : null}
-                </div>
+                    {messageBubble}
+                  </>
+                )}
               </div>
             );
           })}

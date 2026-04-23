@@ -6,8 +6,10 @@ Providers supported: Gemini and DeepSeek only.
 
 from __future__ import annotations
 
+import json
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 import httpx
 
 from tunde_agent.config.settings import Settings
@@ -35,6 +37,20 @@ class BaseLLM(ABC):
 
         ``max_output_tokens``: when set, caps generation length (Gemini ``maxOutputTokens``, DeepSeek ``max_tokens``).
         """
+
+    def complete_stream(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        max_output_tokens: int | None = None,
+        chunk_size: int = 24,
+    ) -> Iterator[str]:
+        """Yield partial strings; default implementation chunks a full ``complete()``."""
+        full = self.complete(system_prompt, user_message, max_output_tokens=max_output_tokens)
+        text = str(full or "")
+        for i in range(0, len(text), chunk_size):
+            yield text[i : i + chunk_size]
 
 
 class GeminiClient(BaseLLM):
@@ -216,6 +232,71 @@ class DeepSeekClient(BaseLLM):
         except (KeyError, IndexError, TypeError) as e:
             raise LLMError("Unexpected DeepSeek response shape.") from e
 
+    def complete_stream(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        max_output_tokens: int | None = None,
+        chunk_size: int = 24,
+    ) -> Iterator[str]:
+        """Stream token deltas from DeepSeek when ``stream: true``; fallback to chunked full reply."""
+        del chunk_size  # streaming uses provider-native deltas
+        payload: dict = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "stream": True,
+        }
+        if max_output_tokens is not None and max_output_tokens > 0:
+            payload["max_tokens"] = int(max_output_tokens)
+        yielded = False
+        try:
+            with httpx.Client(timeout=120.0) as client:
+                with client.stream(
+                    "POST",
+                    f"{self._base_url}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                ) as r:
+                    r.raise_for_status()
+                    for line in r.iter_lines():
+                        if not line:
+                            continue
+                        if not line.startswith("data: "):
+                            continue
+                        raw = line[6:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = data.get("choices")
+                        if not isinstance(choices, list) or not choices:
+                            continue
+                        delta = (choices[0].get("delta") or {}) if isinstance(choices[0], dict) else {}
+                        piece = delta.get("content") if isinstance(delta, dict) else None
+                        if piece:
+                            yielded = True
+                            yield str(piece)
+        except (httpx.HTTPStatusError, httpx.RequestError):
+            if yielded:
+                return
+            yield from super().complete_stream(
+                system_prompt, user_message, max_output_tokens=max_output_tokens
+            )
+            return
+        if not yielded:
+            yield from super().complete_stream(
+                system_prompt, user_message, max_output_tokens=max_output_tokens
+            )
+
 
 def build_llm_client(settings: Settings, provider: str) -> BaseLLM:
     """
@@ -249,6 +330,11 @@ class LLMService:
     def chat(self, user_message: str) -> str:
         system = self._prompts.system_prompt()
         return self._client.complete(system, user_message.strip())
+
+    def chat_stream(self, user_message: str) -> Iterator[str]:
+        """Yield text chunks for incremental delivery (WebSocket deltas)."""
+        system = self._prompts.system_prompt()
+        yield from self._client.complete_stream(system, user_message.strip())
 
     @property
     def provider_label(self) -> str:

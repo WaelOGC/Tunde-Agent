@@ -45,6 +45,14 @@ Architecture, product, database, roadmap, and tool specification documents.
 - `PROJECT_MAP.md` — Documentation topic file.
 - `Tunde_Agent_Reference_Document.md` — Documentation topic file.
 
+### `docs/avatar/`
+Tunde Avatar V1: animation rules, visual DNA, integration, and reference art.
+
+- `avatar_animation_system.md` — State model (IDLE / LISTENING / THINKING / SPEAKING), motion layers, transition rules.
+- `avatar_identity_dna.md` — Visual identity spec (materials, cyber layer, proportions).
+- `avatar_integration.md` — How avatar connects to frontend, voice, and backend agents.
+- `avatar_visual_reference_v1.png` — Visual reference image for the avatar direction.
+
 ### `downloads/`
 Captured images and transient downloads from research/browser flows.
 
@@ -320,7 +328,7 @@ Routers, models, orchestration, QC, WebSockets, and tools.
 - `file_router.py` — Upload/download routes for analyst file TTL storage.
 - `landing_page_generator.py` — Builds Tailwind/HTML landing pages from canvas context.
 - `main.py` — FastAPI application factory and ASGI entry mounting all dashboard routers.
-- `orchestrator.py` — Coordinates tool calls and LLM turns for chat tasks.
+- `orchestrator.py` — Coordinates tool calls and LLM turns for chat tasks; can stream assistant text over WebSocket (`assistant_delta`, `assistant_done`) when streaming succeeds, with non-streaming fallback.
 - `pages_router.py` — Publish/share routes for generated landing pages.
 - `qc_service.py` — Quality-check / moderation gateway for outputs.
 - `seed_agents.py` — Seeds default agent personas/config in DB.
@@ -337,9 +345,20 @@ Production build output for static hosting or preview.
 ### `tunde_webapp_frontend/src/`
 React source: components, hooks, utilities, styles.
 
-- `App.jsx` — Main dashboard layout: sidebar, chat, canvas, sockets.
+- `App.jsx` — Main dashboard layout: sidebar, chat, canvas, sockets; imports `avatar/AvatarCore` for planned shell integration.
 - `index.css` — Global CSS imports and Tailwind layers.
 - `main.jsx` — React DOM root mount and router shell.
+
+### `tunde_webapp_frontend/src/avatar/`
+Tunde Avatar UI scaffold (V1): mini orb next to assistant messages, expanded overlay stub, shared state constants.
+
+- `AvatarMini.jsx` — Mini circular avatar; injects scoped CSS for per-state animations.
+- `AvatarCore.jsx` — Composes mini vs expanded mode; stub voice lifecycle helpers.
+- `AvatarExpanded.jsx` — Full-screen placeholder while expanded voice UI is built out.
+- `AvatarStateManager.js` — `AVATAR_MODES`, `AVATAR_STATES`, `createAvatarState()`.
+- `AvatarConfig.js` — Reserved for future avatar configuration.
+- `AvatarRenderer.jsx` — Reserved for future render pipeline (e.g. Three.js).
+- `AvatarVoiceSync.js` — Reserved for STT/TTS sync hooks.
 
 ### `integrations/passport-reference/src/`
 Reference server source tree.
@@ -401,7 +420,7 @@ Application services: LLM, missions, reports, orchestration, search APIs.
 - `gemini_veo_video.py` — Gemini/Veo video generation integration.
 - `generation_service.py` — Coordinates image/video/text generation backends.
 - `illustrator_agent.py` — Illustration-focused generation orchestration.
-- `llm_service.py` — Unified LLM calls (Gemini/DeepSeek) with retries.
+- `llm_service.py` — Unified LLM layer: Gemini (REST via httpx), DeepSeek chat API, `complete` / `complete_stream` / multimodal helpers; used by webapp orchestrator for streaming replies.
 - `mission_service.py` — Runs end-to-end mission workflows.
 - `notification_service.py` — Outbound notifications (email/Telegram hooks).
 - `oauth_token_crypto.py` — Encrypt/decrypt stored OAuth tokens.
@@ -481,7 +500,7 @@ Feature UI: chat, canvas, wizards, visualizations.
 - `AnatomyVisual.jsx` — Illustrative anatomy visualization component.
 - `BusinessAnalysisCanvas.jsx` — Business SWOT/market canvas editing UI.
 - `BusinessSimulateModal.jsx` — Modal for running business simulations.
-- `ChatCenter.jsx` — Primary chat pane with streaming messages and tools.
+- `ChatCenter.jsx` — Primary chat pane with streaming messages and tools; Tunde mini avatar (`AvatarMini`) beside assistant rows; internal `avatarState` synced to submit/processing for future use.
 - `CodeBlock.jsx` — Syntax-highlighted code display.
 - `DataAnalystWizard.jsx` — Guided flow for dataset analysis requests.
 - `DataChart.jsx` — Chart visualization wrapper for analyst outputs.
@@ -503,7 +522,7 @@ Frontend constants for workflows.
 React hooks and mock state for sessions and sockets.
 
 - `mockSession.js` — Dev-only mock session state.
-- `useTundeSocket.js` — React hook wrapping WebSocket chat/events.
+- `useTundeSocket.js` — React hook wrapping WebSocket chat/events: one active socket, skip duplicate connect while OPEN/CONNECTING, exponential backoff reconnect, clean close on unmount.
 
 ### `tunde_webapp_frontend/src/utils/`
 Formatting, export, markdown, and report helpers.

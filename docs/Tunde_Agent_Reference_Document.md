@@ -1,9 +1,11 @@
 # Tunde Agent — Comprehensive Reference Document
 
-**Version:** 1.2  
-**Last Updated:** 2026-04-21  
+**Version:** 1.3  
+**Last Updated:** 2026-04-22  
 **Status:** Active Development (Pre-Release)  
 **Legend:** ✅ Done | ⚠️ Bugs/Partial | ⏳ Planned | ❌ Not Started  
+
+**Recent session (2026-04-22):** **Tunde Avatar (V1 scaffold)** ⚠️ partial — new `tunde_webapp_frontend/src/avatar/` module: **`AvatarMini`** (CSS keyframe visuals for IDLE / LISTENING / THINKING / SPEAKING), **`AvatarStateManager`**, **`AvatarCore`** (mini vs expanded mode), **`AvatarExpanded`** (placeholder full-screen overlay). **`ChatCenter.jsx`** drives avatar mood from **`processing`** and submit (LISTENING → THINKING → short SPEAKING pulse); **`AvatarMini`** is shown next to assistant bubbles (mini state currently fixed **IDLE** while chat streaming is off). **Docs:** `docs/avatar/` — expanded **`avatar_animation_system.md`**, **`avatar_identity_dna.md`**, **`avatar_integration.md`**, plus **`avatar_visual_reference_v1.png`**. **Backend:** **`orchestrator.py`** — assistant reply can stream over WebSocket as **`assistant_delta`** / **`assistant_done`** via **`LLMService.chat_stream`** (worker thread + queue); stricter **dashboard system rules** (zero-intro opener, structured Markdown, light emoji use, no off-webapp channels, GFM tables). **`src/tunde_agent/services/llm_service.py`** — shared **Gemini (REST via httpx)** + **DeepSeek** client with streaming support. **Frontend socket:** **`useTundeSocket.js`** — process-wide refcounted singleton WebSocket per URL (reconnect backoff while subscribers exist). **`App.jsx`** imports **`AvatarCore`** for upcoming shell wiring (not yet mounted in layout). **✅ Bug 3 (2026-04-22):** **`App.jsx`** gates **`DELETE /db/conversations`** until bootstrap finishes (**`bootHydrationDoneRef`**), restores **`localStorage`** / **`dbConvId`** correctly, **`POST /db/conversations`** sends **`conv_id`** when a **`local_*`** draft resumes a persisted UUID (no duplicate DB row), and **`ChatCenter`** keeps user bubbles visible after hydrate.
 
 **Recent session (2026-04-21):** Design Agent Phase 1 (**Brand Identity**) ✅ complete. Phase 2 (**Web Page Designer**) ✅ complete. Phase 3 (**UI/UX Prototype**) ⚠️ partial — Preview deferred. Dashboard redesigned: **Tool Picker Modal** replaces sidebar tool buttons. **Provider names hidden from UI.** **WorkspaceSidebar** simplified — chat history + Tunde Hub only.
 
@@ -160,8 +162,17 @@ tunde_webapp_frontend/src/
 │   ├── BusinessAnalysisCanvas.jsx / BusinessSimulateModal.jsx  ⚠️ (Business Agent slice)
 │   └── SettingsPanel.jsx  ✅
 │
+├── avatar/  ⚠️ (Tunde Avatar V1 — in progress)
+│   ├── AvatarMini.jsx  ⚠️ (state-driven mini orb + injected CSS animations)
+│   ├── AvatarCore.jsx  ⚠️ (mini / expanded mode + voice stub API)
+│   ├── AvatarExpanded.jsx  ⚠️ (placeholder overlay)
+│   ├── AvatarStateManager.js  ⚠️ (modes + states + default state factory)
+│   ├── AvatarConfig.js  ⏳ (placeholder)
+│   ├── AvatarRenderer.jsx  ⏳ (placeholder)
+│   └── AvatarVoiceSync.js  ⏳ (placeholder)
+│
 └── state/
-    ├── useTundeSocket.js  ✅ (WebSocket hook)
+    ├── useTundeSocket.js  ✅ (WebSocket hook — single connection + reconnect)
     └── mockSession.js  ✅
 ```
 
@@ -272,6 +283,8 @@ tunde_webapp_backend/app/
 │   └── GET /auth/status             ✅
 │
 ├── ws_manager.py  ✅  (WebSocket manager)
+│
+├── orchestrator.py  ✅  (Task orchestration; optional **assistant_delta** / **assistant_done** streaming when LLM stream succeeds)
 │
 ├── landing_page_generator.py  ✅
 │   ├── _LANDING_SYSTEM (improved prompt)
@@ -533,7 +546,7 @@ Production (Docker):
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
-| WebSocket real-time | ✅ | CEO pipeline status |
+| WebSocket real-time | ✅ | CEO pipeline status; optional **`assistant_delta`** / **`assistant_done`** for streamed assistant text (orchestrator + `LLMService.chat_stream`) |
 | Conversation persistence | ✅ | Survives page refresh |
 | Sidebar history | ✅ | Today/Yesterday/7 days |
 | Canvas (Landing) | ✅ | Workspace HTML pages |
@@ -547,7 +560,7 @@ Production (Docker):
 | Published pages | ✅ | Public `/share/{id}` |
 | File upload | ✅ | `POST /files/upload` |
 | Image generation | ✅ | Style wizard |
-| Voice Engine | ❌ | Phase 4 |
+| Voice Engine | ❌ | Phase 4 (Avatar V1 UI scaffold in place; STT/TTS not wired) |
 | Real Auth (JWT) | ❌ | Currently "dev_user" |
 | Multi-language UI | ❌ | Arabic + European |
 
